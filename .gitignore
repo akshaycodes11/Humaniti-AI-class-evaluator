@@ -26,12 +26,19 @@ __pycache__/
 *.flac
 *.wma
 
-# Class Recordings & Workspace Media Folders
-dataset_samples/class recordings/
+# Audio & Video Transcripts (Never upload to GitHub)
+*.vtt
+*.srt
+*.transcript
+dataset_samples/transcripts/
+dataset_samples/
+
+# Workspace Media & Temp Folders
 evaluator_workspace/
 temp_downloads/
 keyframes/
 *.part
 
-# Generated Evaluation PDFs
+# Generated Evaluation PDFs & Scratch Scripts
 *.pdf
+download_all_vtts.py
