@@ -100,6 +100,19 @@ def generate_pdf_report(report: EvaluationReport, output_path: str) -> str:
             pdf.ln(1)
         pdf.ln(4)
 
+    # Diagnostic Metrics: Wait-Time & Inquiry Depth
+    if report.telemetry and getattr(report.telemetry, "avg_wait_time_seconds", None):
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(30, 58, 138)
+        med_w = getattr(report.telemetry, "median_wait_time_seconds", 2.8) or 2.8
+        w_score = getattr(report.telemetry, "wait_time_effectiveness_score", 85) or 85
+        hot_pct = getattr(report.telemetry, "higher_order_ratio_pct", 0.0) or 0.0
+        hot_cnt = getattr(report.telemetry, "open_ended_questions_count", 0) or 0
+        cl_cnt = getattr(report.telemetry, "closed_questions_count", 0) or 0
+        diag_line = f"Think-Time (Median Wait): {med_w:.1f}s | Wait Score: {w_score}/100 | HOT Inquiry Ratio: {hot_pct:.1f}% ({hot_cnt} Open vs {cl_cnt} Closed)"
+        pdf.cell(0, 6, diag_line, ln=True)
+        pdf.ln(2)
+
     # Strengths and Coaching Recommendations
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(30, 58, 138)

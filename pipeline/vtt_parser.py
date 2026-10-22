@@ -1,4 +1,5 @@
 import re
+import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from pipeline.security import scrub_pii
 
@@ -148,6 +149,80 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
                 "description": f"{u['speaker']}: \"{u['text']}\""
             })
 
+    # Group consecutive cues by the same speaker into coherent conversational turns
+    turns: List[Dict[str, Any]] = []
+    curr_turn = None
+    for start_s, end_s, spk, txt in raw_cues:
+        if curr_turn is None:
+            curr_turn = {"speaker": spk, "start_s": start_s, "end_s": end_s, "text": txt}
+        elif curr_turn["speaker"] == spk:
+            curr_turn["end_s"] = end_s
+            curr_turn["text"] += " " + txt
+        else:
+            turns.append(curr_turn)
+            curr_turn = {"speaker": spk, "start_s": start_s, "end_s": end_s, "text": txt}
+    if curr_turn:
+        turns.append(curr_turn)
+
+    # Bloom's Taxonomy Question Classification
+    hot_pat = re.compile(
+        r"\b(why|how come|what if|how did you|how would you|explain|what happens when|what happens if|plan|strategy|idea|think about|reason|justify|compare|how do you know)\b",
+        re.IGNORECASE
+    )
+    proc_pat = re.compile(
+        r"\b(which move|where should|where can|how do we|how can we|what should|what do we play|next step|can you find|can you show|how to solve|which square)\b",
+        re.IGNORECASE
+    )
+
+    hot_questions: List[Dict[str, str]] = []
+    proc_questions: List[Dict[str, str]] = []
+    recall_questions: List[Dict[str, str]] = []
+    wait_times: List[float] = []
+    self_interrupted_count = 0
+
+    for i in range(len(turns)):
+        turn = turns[i]
+        if turn["speaker"] == primary_teacher and "?" in turn["text"]:
+            q_text = turn["text"].strip()
+            turn_min = int(turn["start_s"] // 60)
+            turn_sec = int(turn["start_s"] % 60)
+            ts_str = f"{turn_min:02d}:{turn_sec:02d}"
+
+            if hot_pat.search(q_text):
+                hot_questions.append({"timestamp": ts_str, "text": q_text, "type": "Higher-Order / Inquiry"})
+            elif proc_pat.search(q_text):
+                proc_questions.append({"timestamp": ts_str, "text": q_text, "type": "Procedural / Application"})
+            else:
+                recall_questions.append({"timestamp": ts_str, "text": q_text, "type": "Recall / Closed"})
+
+            if i < len(turns) - 1:
+                next_turn = turns[i + 1]
+                gap = max(0.1, next_turn["start_s"] - turn["end_s"])
+                if next_turn["speaker"] != primary_teacher:
+                    wait_times.append(round(gap, 2))
+                else:
+                    if gap < 2.5:
+                        self_interrupted_count += 1
+
+    total_classified_q = len(hot_questions) + len(proc_questions) + len(recall_questions)
+    hot_ratio_pct = round((len(hot_questions) / float(max(1, total_classified_q))) * 100.0, 1)
+
+    if wait_times:
+        avg_wait_s = round(float(np.mean(wait_times)), 2)
+        median_wait_s = round(float(np.median(wait_times)), 2)
+        deep_think_count = int(np.sum(np.array(wait_times) >= 2.5))
+        if 2.0 <= median_wait_s <= 5.0:
+            wait_time_score = min(100, int(85 + deep_think_count * 1.5))
+        elif median_wait_s < 2.0:
+            wait_time_score = max(35, int(60 + median_wait_s * 12))
+        else:
+            wait_time_score = max(40, int(90 - (median_wait_s - 5.0) * 8))
+    else:
+        avg_wait_s = 2.5
+        median_wait_s = 2.0
+        deep_think_count = 0
+        wait_time_score = 75
+
     return {
         "utterances_count": len(utterances),
         "primary_teacher": primary_teacher,
@@ -160,6 +235,20 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
         "rapport_greeting_detected": has_greeting,
         "audio_glitches_count": len(technical_glitches),
         "audio_glitch_events": technical_glitches[:8],
+        "avg_wait_time_seconds": avg_wait_s,
+        "median_wait_time_seconds": median_wait_s,
+        "deep_think_time_count": deep_think_count,
+        "self_interrupted_questions_count": self_interrupted_count,
+        "wait_time_effectiveness_score": wait_time_score,
+        "open_ended_questions_count": len(hot_questions),
+        "closed_questions_count": len(recall_questions) + len(proc_questions),
+        "higher_order_ratio_pct": hot_ratio_pct,
+        "bloom_categories": {
+            "Higher_Order_Analysis": len(hot_questions),
+            "Procedural_Application": len(proc_questions),
+            "Recall_Closed": len(recall_questions)
+        },
+        "sample_inquiry_questions": hot_questions[:5],
         "total_words": total_words,
         "duration_seconds": round(class_duration_s, 1),
         "silence_ratio_pct": silence_ratio_pct,

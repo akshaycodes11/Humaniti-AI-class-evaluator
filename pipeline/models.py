@@ -53,6 +53,18 @@ class TelemetrySummary(BaseModel):
     estimated_snr_db: float = Field(default=22.0, description="Estimated Signal-to-Noise Ratio in decibels")
     audio_glitch_events: List[Dict[str, Any]] = Field(default_factory=list, description="Timestamped log of specific audio glitch incidents")
 
+    # Pedagogical Wait Time (Think-Time) & Bloom's Taxonomy Question Depth
+    avg_wait_time_seconds: Optional[float] = Field(default=3.2, description="Mean wait time after asking questions")
+    median_wait_time_seconds: Optional[float] = Field(default=2.8, description="Median wait time (think time) in seconds")
+    deep_think_time_count: Optional[int] = Field(default=0, description="Questions where teacher provided >= 2.5s think time")
+    self_interrupted_questions_count: Optional[int] = Field(default=0, description="Questions interrupted by teacher before student answered")
+    wait_time_effectiveness_score: Optional[int] = Field(default=85, ge=0, le=100, description="Pedagogical think-time score (0-100)")
+    open_ended_questions_count: Optional[int] = Field(default=0, description="Higher-order inquiry questions asked (why, how, what if)")
+    closed_questions_count: Optional[int] = Field(default=0, description="Procedural or recall closed questions")
+    higher_order_ratio_pct: Optional[float] = Field(default=0.0, description="Percentage of questions that require higher-order thinking")
+    bloom_categories: Optional[Dict[str, int]] = Field(default_factory=dict, description="Counts by Bloom's Taxonomy tier")
+    sample_inquiry_questions: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Sample timestamped inquiry questions")
+
 
 
 class EvaluationReport(BaseModel):

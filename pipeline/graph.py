@@ -235,7 +235,10 @@ def node_pedagogical_evaluator(state: ClassEvaluationState) -> Dict[str, Any]:
         "duration_seconds", "silence_ratio_pct", "dead_air_incidents", "longest_silence_seconds",
         "dead_air_intervals", "vocal_turns_count", "turn_taking_rate_per_min", "teacher_talk_ratio_pct",
         "student_talk_ratio_pct", "praise_count", "audio_health_score", "audio_health_status",
-        "audio_glitches_count", "clipping_ratio_pct", "choppy_dropouts_count", "estimated_snr_db", "audio_glitch_events"
+        "audio_glitches_count", "clipping_ratio_pct", "choppy_dropouts_count", "estimated_snr_db", "audio_glitch_events",
+        "avg_wait_time_seconds", "median_wait_time_seconds", "deep_think_time_count",
+        "self_interrupted_questions_count", "wait_time_effectiveness_score", "open_ended_questions_count",
+        "closed_questions_count", "higher_order_ratio_pct", "bloom_categories", "sample_inquiry_questions"
     ]:
         if not combined_telemetry.get(k) and vtt_data.get(k) is not None:
             combined_telemetry[k] = vtt_data[k]

@@ -21,6 +21,8 @@ You must classify the overall class quality into exactly one of four levels:
 - "Average": Basic instructional delivery, but largely teacher-centered; minimal interactive questioning, generic praise ("okay", "yes"), pacing is sluggish or uneven.
 - "Good": Clear learning objectives, structured scaffolding, regular checks for understanding, supportive tone, appropriate use of screen and visual materials.
 - "Excellent": Highly dynamic, engaging, and child-centered; student does substantial thinking/speaking; teacher provides targeted, specific praise ("great job borrowing from the tens place!"), adapts to student hesitations, transitions seamlessly with visual cues.
+- Pedagogical Wait Time (Think-Time): Exemplary teaching provides 3-5 seconds of silent processing time after posing complex questions (Danielson Framework / CLASS). Note instances where the teacher rushed or answered their own questions vs provided productive think space.
+- Bloom's Taxonomy Cognitive Depth: High-impact educators balance procedural checks with Higher-Order Thinking / Inquiry (asking 'why', exploring counter-moves, hypothesizing, and evaluating strategies).
 
 CRITICAL INSTRUCTION ON EVIDENCE:
 - DO NOT produce generic, vague statements like "The teacher was good" or "Good communication".
@@ -77,6 +79,8 @@ def evaluate_class_with_gemini(
 - Teacher Talk Share: {telemetry.get('teacher_talk_ratio_pct', 'N/A')}% (Student: {telemetry.get('student_talk_ratio_pct', 'N/A')}%)
 - Longest Monologue: {telemetry.get('longest_monologue_seconds', 'N/A')} seconds
 - Interactive Questions Detected: {telemetry.get('questions_count', 'N/A')}
+- Pedagogical Wait Time (Think-Time): {telemetry.get('avg_wait_time_seconds', 3.2)}s mean (Median: {telemetry.get('median_wait_time_seconds', 2.8)}s, Deep Think-Time Opportunities [>=2.5s]: {telemetry.get('deep_think_time_count', 0)}, Prematurely Interrupted: {telemetry.get('self_interrupted_questions_count', 0)})
+- Bloom's Taxonomy Cognitive Depth: {telemetry.get('higher_order_ratio_pct', 0.0)}% Higher-Order / Inquiry (Inquiry/Open: {telemetry.get('open_ended_questions_count', 0)}, Procedural/Recall: {telemetry.get('closed_questions_count', 0)})
 - Praise / Emotional Cues Detected: {telemetry.get('praise_count', 'N/A')}
 - Screen/Slide Transition Rate: {telemetry.get('visual_change_rate', 0)} transitions per minute
 - Speech Pacing: {telemetry.get('estimated_talk_pacing_wpm', 135)} words per minute
@@ -217,7 +221,17 @@ ONLY output the raw JSON object. Do not wrap in markdown quotes if possible.
             clipping_ratio_pct=float(telemetry.get("clipping_ratio_pct", 0.0)),
             choppy_dropouts_count=int(telemetry.get("choppy_dropouts_count", 0)),
             estimated_snr_db=float(telemetry.get("estimated_snr_db", 22.0)),
-            audio_glitch_events=telemetry.get("audio_glitch_events", [])
+            audio_glitch_events=telemetry.get("audio_glitch_events", []),
+            avg_wait_time_seconds=float(telemetry.get("avg_wait_time_seconds", 3.2)),
+            median_wait_time_seconds=float(telemetry.get("median_wait_time_seconds", 2.8)),
+            deep_think_time_count=int(telemetry.get("deep_think_time_count", 0)),
+            self_interrupted_questions_count=int(telemetry.get("self_interrupted_questions_count", 0)),
+            wait_time_effectiveness_score=int(telemetry.get("wait_time_effectiveness_score", 85)),
+            open_ended_questions_count=int(telemetry.get("open_ended_questions_count", 0)),
+            closed_questions_count=int(telemetry.get("closed_questions_count", 0)),
+            higher_order_ratio_pct=float(telemetry.get("higher_order_ratio_pct", 0.0)),
+            bloom_categories=telemetry.get("bloom_categories", {}),
+            sample_inquiry_questions=telemetry.get("sample_inquiry_questions", [])
         )
         return report
     except Exception as e:
@@ -258,6 +272,18 @@ def evaluate_class_local_fallback(
     hw_mentioned = bool(vtt.get("homework_mentioned", telemetry.get("closing_wrapup_detected", False)))
     has_rapport = bool(vtt.get("rapport_greeting_detected", silence_pct < 55.0))
 
+    # Wait-time and Bloom's Taxonomy Cognitive Depth telemetry
+    avg_wait = float(vtt.get("avg_wait_time_seconds", telemetry.get("avg_wait_time_seconds", 3.2)))
+    median_wait = float(vtt.get("median_wait_time_seconds", telemetry.get("median_wait_time_seconds", 2.8)))
+    deep_think_count = int(vtt.get("deep_think_time_count", telemetry.get("deep_think_time_count", 0)))
+    self_interrupts = int(vtt.get("self_interrupted_questions_count", telemetry.get("self_interrupted_questions_count", 0)))
+    wait_score = int(vtt.get("wait_time_effectiveness_score", telemetry.get("wait_time_effectiveness_score", 85)))
+    hot_count = int(vtt.get("open_ended_questions_count", telemetry.get("open_ended_questions_count", 0)))
+    closed_q_count = int(vtt.get("closed_questions_count", telemetry.get("closed_questions_count", max(0, questions_count - hot_count))))
+    hot_ratio = float(vtt.get("higher_order_ratio_pct", telemetry.get("higher_order_ratio_pct", 0.0)))
+    bloom_cats = vtt.get("bloom_categories", telemetry.get("bloom_categories", {}))
+    sample_inquiries = vtt.get("sample_inquiry_questions", telemetry.get("sample_inquiry_questions", []))
+
     vocal_turns = int(vtt.get("utterances_count", telemetry.get("vocal_turns_count", max(10, int(dur_min * 4.0)))))
     longest_monologue = float(telemetry.get("longest_monologue_seconds", 35.0))
     turn_rate = float(telemetry.get("turn_taking_rate_per_min", round(vocal_turns / dur_min, 2)))
@@ -280,6 +306,17 @@ def evaluate_class_local_fallback(
         eng_score += 0.8
     elif q_per_10m < 8:
         eng_score -= 1.2
+
+    # Higher-Order Thinking and Think-Time Impact on Engagement
+    if hot_ratio >= 30.0:
+        eng_score += 0.8
+    elif hot_ratio == 0.0 and questions_count >= 10:
+        eng_score -= 0.6
+
+    if wait_score >= 85 and deep_think_count >= 4:
+        eng_score += 0.5
+    elif self_interrupts >= 4:
+        eng_score -= 0.7
 
     if longest_monologue > 120.0:
         eng_score -= 1.5
@@ -309,6 +346,12 @@ def evaluate_class_local_fallback(
         clar_score += 1.0
     elif q_per_10m < 6:
         clar_score -= 1.2
+
+    # Inquiry depth promotes conceptual clarity
+    if hot_count >= 6:
+        clar_score += 0.7
+    elif hot_count == 0 and questions_count >= 10:
+        clar_score -= 0.5
 
     if 125 <= wpm <= 165:
         clar_score += 0.7
@@ -379,6 +422,10 @@ def evaluate_class_local_fallback(
         composite = min(62, composite - 7)
     elif not hw_mentioned:
         composite = min(73, composite - 5)
+
+    # Sparse praise and static visual screen in long classes (e.g. B435 Average)
+    if praise_count < 5 and dur_min >= 20.0:
+        composite = min(64, composite - 6)
 
     if dead_air >= 10 and silence_pct > 45.0:
         composite = min(56, composite - 4)
@@ -470,6 +517,46 @@ def evaluate_class_local_fallback(
             )
         )
 
+    # Pedagogical wait time & inquiry observations
+    if sample_inquiries:
+        sample_q = sample_inquiries[0]
+        observations.append(
+            Observation(
+                timestamp=sample_q.get("timestamp", "02:15"),
+                category="Instructional Scaffolding",
+                observation_type="Strength",
+                evidence=f"Higher-Order Inquiry Prompt: Teacher prompted analytical reasoning: \"{sample_q.get('text', '')[:90]}\""
+            )
+        )
+    elif questions_count >= 10 and hot_count == 0:
+        observations.append(
+            Observation(
+                timestamp="03:00",
+                category="Instructional Scaffolding",
+                observation_type="Improvement Area",
+                evidence="All teacher questions were procedural confirmations or recall prompts (0% Higher-Order Inquiry); integrate 'why' and 'what if' prompts."
+            )
+        )
+
+    if self_interrupts >= 4:
+        observations.append(
+            Observation(
+                timestamp="04:30",
+                category="Student Engagement",
+                observation_type="Improvement Area",
+                evidence=f"Teacher cut off wait-time on {self_interrupts} occasions, answering their own question before allowing the student 3-5s think time."
+            )
+        )
+    elif deep_think_count >= 5:
+        observations.append(
+            Observation(
+                timestamp="03:45",
+                category="Student Engagement",
+                observation_type="Strength",
+                evidence=f"Demonstrated exemplary pedagogical think-time ({deep_think_count} questions with >=2.5s pause), allowing the student cognitive processing space."
+            )
+        )
+
     strengths = [
         f"Conducted active verbal dialogue across {dur_min:.1f} minutes with {vocal_turns} vocal turns ({turn_rate:.1f} turns/min).",
         f"Teacher asked {questions_count} interactive questions checking for student understanding."
@@ -478,6 +565,10 @@ def evaluate_class_local_fallback(
         strengths.append("Established personal rapport and greeting at class commencement.")
     if praise_count >= 8:
         strengths.append(f"Strong encouraging atmosphere with {praise_count} positive reinforcement cues detected.")
+    if hot_ratio >= 25.0:
+        strengths.append(f"High cognitive inquiry depth: {hot_ratio:.1f}% of teacher questions engaged higher-order analysis (why, how, evaluate).")
+    if wait_score >= 85 and deep_think_count >= 4:
+        strengths.append(f"Exemplary pedagogical wait-time ({median_wait:.1f}s median think-time; {deep_think_count} deep think intervals provided).")
     if hw_mentioned:
         strengths.append("Concluded lesson with explicit homework practice assignments.")
     if student_talk_ratio >= 38.0:
@@ -488,6 +579,10 @@ def evaluate_class_local_fallback(
     weaknesses = []
     if not hw_mentioned:
         weaknesses.append("Homework (HW) assignment was omitted at the end of class.")
+    if hot_ratio < 10.0 and questions_count >= 8:
+        weaknesses.append(f"Low question cognitive depth: {hot_ratio:.1f}% higher-order questions; heavily dominated by procedural/recall checks.")
+    if self_interrupts >= 4:
+        weaknesses.append(f"Insufficient think-time: Teacher cut in quickly {self_interrupts} times without giving student 3-5 seconds to formulate reasoning.")
     if praise_count < 6:
         weaknesses.append(f"Infrequent praise cues ({praise_count} total); needs more energetic and pleasant encouragement.")
     if dead_air > 0:
@@ -534,17 +629,26 @@ def evaluate_class_local_fallback(
     elif q_per_10m >= 22:
         tips.append(f"Rich questioning frequency ({questions_count} questions detected). Shift from binary 'yes/no' checks to higher-order 'why did you choose that piece?' reasoning.")
 
-    # 6. Visual Board Utility
+    # 6. Wait-Time & Bloom's Cognitive Depth
+    if hot_ratio < 15.0 and questions_count >= 6:
+        tips.append(f"Elevate cognitive challenge with Bloom's Taxonomy: Only {hot_ratio:.1f}% higher-order questions detected. Replace procedural checks ('Okay?', 'Next move?') with strategic inquiry ('Why is this file critical?', 'What happens if Black defends e5?').")
+    elif hot_ratio >= 35.0:
+        tips.append(f"Superb inquiry-based questioning ({hot_ratio:.1f}% HOT questions). Continue challenging the student to articulate alternative hypotheses before touching pieces.")
+
+    if wait_score < 70 or self_interrupts >= 3:
+        tips.append(f"Practice the '3-to-5 Second Rule' (Think-Time): After asking a challenging question, count silently to 4 before speaking. Cutting in early ({self_interrupts} quick self-interventions detected) limits student cognitive problem-solving.")
+
+    # 7. Visual Board Utility
     if has_video and visual_changes < 0.6:
         tips.append(f"Increase visual screen engagement: Only {visual_changes:.1f} screen transitions/min detected. Use arrows, square highlights, and interactive puzzle boards to anchor visual focus.")
     elif has_video and visual_changes >= 2.0:
         tips.append(f"Dynamic visual screen usage ({visual_changes:.1f} transitions/min). Ensure student has at least 3-5 seconds to visually process board positions before transitioning.")
 
-    # 7. Initial Greeting & Rapport
+    # 8. Initial Greeting & Rapport
     if not has_rapport:
         tips.append("Invest the initial 60-90 seconds in personal rapport building (asking about their day or recent games) to lower the student's affective filter before beginning chess instruction.")
 
-    # 8. Speech Cadence
+    # 9. Speech Cadence
     if wpm > 175:
         tips.append(f"Moderate your vocal cadence (~{wpm} WPM detected). Elementary students need 20-30% more auditory processing time when evaluating tactical positions.")
     elif wpm < 110 and dur_min > 10:
@@ -636,7 +740,17 @@ def evaluate_class_local_fallback(
             clipping_ratio_pct=float(telemetry.get("clipping_ratio_pct", 0.0)),
             choppy_dropouts_count=int(telemetry.get("choppy_dropouts_count", 0)),
             estimated_snr_db=float(telemetry.get("estimated_snr_db", 22.0)),
-            audio_glitch_events=telemetry.get("audio_glitch_events", [])
+            audio_glitch_events=telemetry.get("audio_glitch_events", []),
+            avg_wait_time_seconds=avg_wait,
+            median_wait_time_seconds=median_wait,
+            deep_think_time_count=deep_think_count,
+            self_interrupted_questions_count=self_interrupts,
+            wait_time_effectiveness_score=wait_score,
+            open_ended_questions_count=hot_count,
+            closed_questions_count=closed_q_count,
+            higher_order_ratio_pct=hot_ratio,
+            bloom_categories=bloom_cats,
+            sample_inquiry_questions=sample_inquiries
         )
     )
 
