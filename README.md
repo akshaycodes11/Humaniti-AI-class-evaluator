@@ -5,7 +5,7 @@ Developed for the **Humaniti AI AI Build Challenge** — *"Can You Teach AI to R
 
 ---
 
-## 🌟 Executive Summary & Approach (< 300 Words Submission Summary)
+## 🌟 Executive Summary & Approach
 
 Online classes for children cannot be judged solely by transcription or slide count. A high-quality K-12 class hinges on four critical dimensions: **conversational turn-taking** (avoiding one-sided monologues), **scaffolding & clarity**, **emotional climate** (specific, immediate praise like *"super job carrying the 1!"*), and **classroom pacing** (minimizing dead air and disengagement).
 
