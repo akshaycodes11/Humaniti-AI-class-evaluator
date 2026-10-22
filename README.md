@@ -5,18 +5,18 @@ Developed for the **Humaniti AI AI Build Challenge** — *"Can You Teach AI to R
 
 ---
 
-## 🌟 Executive Summary & Approach (< 300 Words Submission Summary)
+## 🌟 Executive Summary & Approach
 
-Online classes for children cannot be judged solely by transcription or slide count. A high-quality K-12 class hinges on four critical dimensions: **conversational turn-taking** (avoiding one-sided monologues), **scaffolding & clarity**, **emotional climate** (specific, immediate praise like *"super job carrying the 1!"*), and **classroom pacing** (minimizing dead air and disengagement).
+Online classes for children cannot be judged solely by transcription or slide count. A high-quality K-12 class hinges on four critical dimensions: conversational turn-taking (avoiding one-sided monologues), scaffolding & clarity, emotional climate (specific, immediate praise like *"super job carrying the 1!"*), and classroom pacing (minimizing dead air and disengagement).
 
-To achieve high accuracy with near-zero cost ($0.00) and ultra-low latency (< 15s), we designed a **Hierarchical Hybrid Architecture**:
-1. **Deterministic Edge Telemetry (Zero-Cost)**: Rather than brute-forcing 45 minutes of heavy video tokens into costly APIs, the system extracts acoustic energy envelopes (silence %, turn-taking ratio, and >7s dead-air pauses) and visual screen transition dynamics using OpenCV.
-2. **Keyframe & Acoustic Fusion**: Spaced keyframes capturing screen/whiteboard changes are coupled with acoustic intervals.
-3. **Pedagogical Evaluation (Gemini 1.5/2.0 Flash Free Tier)**: The multimodal context is evaluated against Charlotte Danielson and CLASS pedagogical frameworks, generating strict Pydantic JSON outputs with timestamped citations.
-4. **Resilient Dual-Engine**: If cloud APIs are unavailable, an automated deterministic fallback engine assesses the class locally with zero latency and zero API keys.
+To achieve high accuracy with near-zero cost ($0.00) and ultra-low latency (< 15s), I designed a Hierarchical Hybrid Architecture:
+1. Deterministic Edge Telemetry (Zero-Cost): Rather than brute-forcing 45 minutes of heavy video tokens into costly APIs, the system extracts acoustic energy envelopes (silence %, turn-taking ratio, and >7s dead-air pauses) and visual screen transition dynamics using OpenCV.
+2. Keyframe & Acoustic Fusion: Spaced keyframes capturing screen/whiteboard changes are coupled with acoustic intervals.
+3. Pedagogical Evaluation (Gemini 1.5/2.0 Flash Free Tier): The multimodal context is evaluated against Charlotte Danielson and CLASS pedagogical frameworks, generating strict Pydantic JSON outputs with timestamped citations.
+4. Resilient Dual-Engine: If cloud APIs are unavailable, an automated deterministic fallback engine assesses the class locally with zero latency and zero API keys.
 
-**What Worked**: Grounding observations in timestamped acoustic dead-air events and visual slide transitions eliminated generic feedback and produced actionable coaching recommendations.  
-**Limitations**: Face engagement analysis is intentionally disabled to strictly uphold child privacy and eliminate biometric data risks.
+What Worked: Grounding observations in timestamped acoustic dead-air events and visual slide transitions eliminated generic feedback and produced actionable coaching recommendations.  
+Limitations: Face engagement analysis is intentionally disabled to strictly uphold child privacy and eliminate biometric data risks.
 
 ---
 
@@ -87,7 +87,6 @@ The application will launch automatically at `http://localhost:8501`.
 To protect student privacy and ensure safe multi-tenant usage, EduGrade AI implements multi-layered security controls:
 
 | Guardrail Layer | Security Control | Protection Mechanism |
-| :--- | :--- | :--- |
 | **SSRF Prevention** | `validate_safe_url` | Validates public schemes; resolves DNS and blocks requests to loopback (`127.0.0.1`), private subnets (`10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), and AWS/GCP instance metadata endpoints (`169.254.169.254`). |
 | **COPPA / Minor PII Redaction** | `scrub_pii` | Automatically scans transcripts and user notes to redact phone numbers (`[PHONE_REDACTED]`), emails (`[EMAIL_REDACTED]`), and IP addresses before LLM inference or export. |
 | **Prompt Injection Defense** | `sanitize_prompt_injection` | Strips adversarial jailbreak phrases (`ignore previous instructions`, `bypass rubric`, `rate 100`) and encapsulates inputs inside structured `<untrusted_teacher_notes>` containers. |
