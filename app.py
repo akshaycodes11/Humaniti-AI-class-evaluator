@@ -18,6 +18,8 @@ from pipeline.vtt_parser import parse_vtt_file
 from pipeline.graph import build_evaluation_graph, ClassEvaluationState
 from utils.gdrive_downloader import download_media_from_url
 from utils.pdf_generator import generate_pdf_report
+from pipeline.security import sanitize_filename, validate_safe_url, MAX_FILE_SIZE_BYTES, purge_ephemeral_storage
+
 
 
 # Set Streamlit Page Configuration
@@ -141,6 +143,19 @@ with st.sidebar:
     - **Pacing & Dead Air (10%)**: Absence of prolonged awkward silences.
     """)
     st.divider()
+    with st.expander("🛡️ Security & Privacy Guardrails", expanded=False):
+        st.caption("Active safety boundaries & compliance standards:")
+        st.markdown("""
+        - **SSRF Defense**: Internal network & metadata IPs strictly blocked.
+        - **COPPA / Minor Privacy**: Automated transcript PII scrubbing (emails, phones, IPs).
+        - **Prompt Injection Defense**: Structural isolation (`<untrusted_teacher_notes>`) active.
+        - **Zero Video Retention**: Session files stored in ephemeral temp memory only.
+        - **File Size Limit**: Uploads capped at 500 MB to prevent resource exhaustion.
+        """)
+        if st.button("🧹 Purge Ephemeral Cache", width="stretch"):
+            count = purge_ephemeral_storage(working_dir, max_age_seconds=0.0)
+            st.success(f"Purged {count} temporary session files.")
+
     st.info("🔒 **Data Privacy**: Recordings are analyzed in temporary memory and never stored or retained.")
 
 
@@ -163,51 +178,61 @@ with input_tab1:
         uploaded_file = st.file_uploader(
             "Upload Recording (.mp4, .webm, .mkv, .wav, .mp3)",
             type=["mp4", "webm", "mkv", "avi", "wav", "mp3", "m4a"],
-            help="Upload an 8x8 online class recording file."
+            help="Upload an 8x8 online class recording file (Max 500 MB)."
         )
     with col_up2:
         uploaded_vtt = st.file_uploader(
             "Upload Transcript (.vtt) [Optional]",
             type=["vtt", "txt"],
-            help="Optional WebVTT transcript file (e.g. from 8x8 classroom platform)."
+            help="Optional WebVTT transcript file (e.g. from 8x8 classroom platform). Automatic COPPA PII scrubbing will be applied."
         )
 
     if uploaded_file is not None:
-        save_path = os.path.join(working_dir, uploaded_file.name)
-        with open(save_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-        input_file_path = save_path
-        st.success(f"Loaded Recording: **{uploaded_file.name}** ({round(uploaded_file.size / (1024*1024), 2)} MB)")
+        if uploaded_file.size > MAX_FILE_SIZE_BYTES:
+            st.error(f"Security Guardrail: Uploaded file ({round(uploaded_file.size / (1024*1024), 1)} MB) exceeds maximum allowed limit of 500 MB.")
+        else:
+            safe_file_name = sanitize_filename(uploaded_file.name)
+            save_path = os.path.join(working_dir, safe_file_name)
+            with open(save_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            input_file_path = save_path
+            st.success(f"Loaded Recording: **{safe_file_name}** ({round(uploaded_file.size / (1024*1024), 2)} MB) [Path-Sanitized]")
 
     input_vtt_path = None
     if uploaded_vtt is not None:
-        vtt_save_path = os.path.join(working_dir, uploaded_vtt.name)
+        safe_vtt_name = sanitize_filename(uploaded_vtt.name)
+        vtt_save_path = os.path.join(working_dir, safe_vtt_name)
         with open(vtt_save_path, "wb") as f:
             f.write(uploaded_vtt.getbuffer())
         input_vtt_path = vtt_save_path
-        st.info(f"Loaded Transcript: **{uploaded_vtt.name}**")
+        st.info(f"Loaded Transcript: **{safe_vtt_name}** (PII Scrubbing Enabled)")
 
 with input_tab2:
     url_input = st.text_input(
         "Enter Google Drive link or Direct Media URL:",
         placeholder="https://drive.google.com/file/d/.../view?usp=sharing",
-        help="Paste a public Google Drive link or direct URL to a video file."
+        help="Paste a public Google Drive link or direct URL to a video file. SSRF protections active."
     )
     col_dl1, col_dl2 = st.columns([1, 4])
     with col_dl1:
         download_btn = st.button("Fetch & Download")
     if download_btn and url_input:
-        with st.spinner("Resolving and downloading media..."):
-            success, path, msg = download_media_from_url(url_input, working_dir)
-            if success:
-                input_file_path = path
-                st.session_state["downloaded_file_path"] = path
-                st.success(f"{msg}: `{os.path.basename(path)}`")
-            else:
-                st.error(f"Download failed: {msg}")
+        is_safe, reason = validate_safe_url(url_input)
+        if not is_safe:
+            st.error(f"Security Guardrail: {reason}")
+        else:
+            with st.spinner("Resolving and downloading media with safety checks..."):
+                success, path, msg = download_media_from_url(url_input, working_dir)
+                if success:
+                    input_file_path = path
+                    st.session_state["downloaded_file_path"] = path
+                    st.success(f"{msg}: `{os.path.basename(path)}`")
+                else:
+                    st.error(f"Download blocked or failed: {msg}")
 
     if "downloaded_file_path" in st.session_state and input_file_path is None:
         input_file_path = st.session_state["downloaded_file_path"]
+
 
 
 # Quick sample selector for testing

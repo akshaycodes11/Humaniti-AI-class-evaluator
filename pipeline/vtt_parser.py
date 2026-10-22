@@ -1,10 +1,13 @@
 import re
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
+from pipeline.security import scrub_pii
 
 
 def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
     """
     Parses a WebVTT transcript file from an 8x8 class recording.
+    Guarded by:
+    - COPPA / Minor PII Redaction (strips emails, phone numbers, IP addresses).
     Extracts:
     - Utterances with timestamps and speakers
     - Speaker talk distribution (teacher vs students)
@@ -20,6 +23,8 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
         return {"error": str(e), "utterances": []}
 
     utterances = []
+    total_pii_redacted = 0
+
     # Regex to match timestamps: 00:01:41.190 --> 00:01:42.590
     time_pattern = re.compile(r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})")
     speaker_pattern = re.compile(r"^([^:\n]+):\s*(.*)$")
@@ -53,13 +58,17 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
             speaker = spk_match.group(1).strip()
             text = spk_match.group(2).strip()
             if text:
+                clean_text, pii_meta = scrub_pii(text)
+                if pii_meta.get("is_scrubbed"):
+                    total_pii_redacted += pii_meta.get("redacted_count", 0)
                 utterances.append({
                     "start": current_start,
                     "end": current_end,
                     "speaker": speaker,
-                    "text": text
+                    "text": clean_text
                 })
-                raw_cues.append((curr_start_s, curr_end_s, speaker, text))
+                raw_cues.append((curr_start_s, curr_end_s, speaker, clean_text))
+
 
     if not utterances:
         return {"utterances": [], "speakers": {}, "summary": {}}
@@ -132,6 +141,8 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
         "dead_air_intervals": dead_air_intervals[:10],
         "vocal_turns_count": len(utterances),
         "turn_taking_rate_per_min": turn_taking_rate,
+        "pii_redacted_count": total_pii_redacted,
         "sample_utterances": utterances[:15]
     }
+
 
