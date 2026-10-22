@@ -41,4 +41,7 @@ keyframes/
 
 # Generated Evaluation PDFs & Scratch Scripts
 *.pdf
+!AI_INTERACTION_HISTORY.pdf
+AI_INTERACTION_LOG.md
 download_all_vtts.py
+generate_ai_interaction_pdf.py
