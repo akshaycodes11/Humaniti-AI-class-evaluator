@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.part
+dataset_samples/class recordings/**/*.mp4*
+!dataset_samples/class recordings/**/B435*
+keyframes/
+*.wav
+*.mp3
+.pytest_cache/
+.streamlit/secrets.toml
