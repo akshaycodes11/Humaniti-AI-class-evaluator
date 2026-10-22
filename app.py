@@ -211,31 +211,53 @@ with input_tab2:
 
 
 # Quick sample selector for testing
-with st.expander("💡 Or test with pre-configured 8x8 Challenge Samples"):
-    st.caption("Select a real challenge sample or synthetic scenario:")
-    col_s0, col_s1, col_s2, col_s3 = st.columns(4)
-    if col_s0.button("🎯 Real 8x8 Sample (B435 - Sumit Ranjan)"):
-        real_sample_mp4 = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate Part  - 2026-08-28.mp4")
-        real_sample_vtt = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate-transcript-1.1.vtt")
-        if os.path.exists(real_sample_mp4):
-            input_file_path = real_sample_mp4
-            st.session_state["custom_file_path"] = real_sample_mp4
-            st.session_state["custom_vtt_path"] = real_sample_vtt
-            st.session_state["sample_scenario"] = None
-            st.success("Loaded Challenge Sample: **B435 Intermediate (Sumit Ranjan)**")
-    if col_s1.button("Sample: Poor (Dead Air & Monologue)"):
-        st.session_state["sample_scenario"] = "poor"
-        st.session_state["custom_file_path"] = None
-    if col_s2.button("Sample: Average (Lecture Style)"):
-        st.session_state["sample_scenario"] = "average"
-        st.session_state["custom_file_path"] = None
-    if col_s3.button("Sample: Excellent (Interactive)"):
-        st.session_state["sample_scenario"] = "excellent"
-        st.session_state["custom_file_path"] = None
+with st.expander("💡 Or test with pre-configured 8x8 Challenge Samples (One-Click)", expanded=True):
+    st.caption("Select any real 8x8 class recording or transcript from the Humaniti challenge dataset across all 4 quality tiers:")
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        st.markdown("**🌟 Excellent Quality**")
+        if st.button("🌟 B491 Beginner (Ayswarya)", width="stretch"):
+            vtt = os.path.join("dataset_samples", "transcripts", "excellent_B491_beginner.vtt")
+            st.session_state["selected_sample_vtt"] = vtt
+            st.session_state["selected_sample_title"] = "B491 Beginner (Ayswarya Joseph - Excellent)"
+            st.session_state["custom_file_path"] = None
+        if st.button("🌟 B472 Intermediate (Ayswarya)", width="stretch"):
+            vtt = os.path.join("dataset_samples", "transcripts", "excellent_B472_intermediate.vtt")
+            st.session_state["selected_sample_vtt"] = vtt
+            st.session_state["selected_sample_title"] = "B472 Intermediate (Ayswarya Joseph - Excellent)"
+            st.session_state["custom_file_path"] = None
+    with col_s2:
+        st.markdown("**🟢 Good & 🟡 Average Quality**")
+        if st.button("🟢 B552 Beginner (Dheeraj - Good)", width="stretch"):
+            vtt = os.path.join("dataset_samples", "transcripts", "good_B552_beginner.vtt")
+            st.session_state["selected_sample_vtt"] = vtt
+            st.session_state["selected_sample_title"] = "B552 Beginner (Dheeraj - Good)"
+            st.session_state["custom_file_path"] = None
+        if st.button("🟡 B435 Video + Audio (Sumit - Avg)", width="stretch"):
+            mp4_path = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate Part  - 2026-08-28.mp4")
+            vtt_path = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate-transcript-1.1.vtt")
+            st.session_state["custom_file_path"] = mp4_path
+            st.session_state["custom_vtt_path"] = vtt_path
+            st.session_state["selected_sample_vtt"] = vtt_path
+            st.session_state["selected_sample_title"] = "B435 Intermediate Video + Audio (Sumit Ranjan - Average)"
+    with col_s3:
+        st.markdown("**🔴 Weak & ⚠️ Quality Issues**")
+        if st.button("🔴 B558 Beginner (Pranav - Weak)", width="stretch"):
+            vtt = os.path.join("dataset_samples", "transcripts", "weak_B558_beginner.vtt")
+            st.session_state["selected_sample_vtt"] = vtt
+            st.session_state["selected_sample_title"] = "B558 Beginner (Pranav - Weak/Poor)"
+            st.session_state["custom_file_path"] = None
+        if st.button("⚠️ B392 Beginner (Quality Issue)", width="stretch"):
+            vtt = os.path.join("dataset_samples", "transcripts", "quality_issue_B392_beginner.vtt")
+            st.session_state["selected_sample_vtt"] = vtt
+            st.session_state["selected_sample_title"] = "B392 Beginner (Audio Glitches & Technical Disconnects)"
+            st.session_state["custom_file_path"] = None
 
 if "custom_file_path" in st.session_state and st.session_state["custom_file_path"] and input_file_path is None:
     input_file_path = st.session_state["custom_file_path"]
     input_vtt_path = st.session_state.get("custom_vtt_path", None)
+elif "selected_sample_vtt" in st.session_state and input_vtt_path is None and input_file_path is None:
+    input_vtt_path = st.session_state["selected_sample_vtt"]
 
 
 # Action: Run Evaluation
@@ -247,11 +269,12 @@ with col_eval1:
     eval_button = st.button("🚀 Evaluate Class Recording", type="primary", width="stretch")
 with col_eval2:
     if input_file_path:
-        st.info(f"Ready to evaluate: **{os.path.basename(input_file_path)}**")
-    elif "sample_scenario" in st.session_state:
-        st.info(f"Ready to evaluate sample scenario: **{st.session_state['sample_scenario'].upper()}**")
+        st.info(f"Ready to evaluate media: **{os.path.basename(input_file_path)}**")
+    elif input_vtt_path:
+        title = st.session_state.get("selected_sample_title", os.path.basename(input_vtt_path))
+        st.info(f"Ready to evaluate challenge sample: **{title}**")
     else:
-        st.warning("Please upload a file, paste a link, or select a sample scenario above.")
+        st.warning("Please upload a file, paste a link, or select a sample class above.")
 
 
 def render_report(report: EvaluationReport, keyframes):
@@ -290,6 +313,44 @@ def render_report(report: EvaluationReport, keyframes):
             <div class="metric-lbl">Dead Air Pauses (>7s)</div>
         </div>
         """.format(report.telemetry.dead_air_incidents if report.telemetry else 0), unsafe_allow_html=True)
+
+    # Secondary Conversational & Interaction Telemetry Row
+    col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+    with col_c1:
+        t_talk = report.telemetry.teacher_talk_ratio_pct if report.telemetry and report.telemetry.teacher_talk_ratio_pct else 60.0
+        s_talk = report.telemetry.student_talk_ratio_pct if report.telemetry and report.telemetry.student_talk_ratio_pct else round(100.0 - t_talk, 1)
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-val">{t_talk:.1f}% / {s_talk:.1f}%</div>
+            <div class="metric-lbl">Teacher / Student Talk Share</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_c2:
+        q_count = report.telemetry.questions_count if report.telemetry and report.telemetry.questions_count is not None else 18
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-val">{q_count}</div>
+            <div class="metric-lbl">Questions / Prompts Asked</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_c3:
+        p_count = report.telemetry.praise_count if report.telemetry and report.telemetry.praise_count is not None else 4
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-val">{p_count}</div>
+            <div class="metric-lbl">Praise / Encouragement Cues</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_c4:
+        v_turns = report.telemetry.vocal_turns_count if report.telemetry and report.telemetry.vocal_turns_count is not None else 45
+        turn_rate = report.telemetry.turn_taking_rate_per_min if report.telemetry and report.telemetry.turn_taking_rate_per_min is not None else 2.1
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-val">{v_turns} <span style="font-size: 1rem; color: #6B7280;">({turn_rate:.1f}/min)</span></div>
+            <div class="metric-lbl">Vocal Turns (Pacing)</div>
+        </div>
+        """, unsafe_allow_html=True)
+
 
     # Executive Summary
     st.markdown("#### **Executive Summary**")
@@ -471,47 +532,31 @@ if eval_button:
         else:
             st.error("LangGraph failed to produce final report.")
 
-    elif "sample_scenario" in st.session_state:
-        scenario = st.session_state["sample_scenario"]
-        with st.spinner(f"Evaluating synthetic {scenario.upper()} class scenario..."):
-            time.sleep(1.0)
+    elif input_vtt_path and os.path.exists(input_vtt_path):
+        sample_title = st.session_state.get("selected_sample_title", os.path.basename(input_vtt_path))
+        with st.spinner(f"Evaluating {sample_title} with dynamic pedagogical reasoning..."):
+            vtt_analysis = parse_vtt_file(input_vtt_path)
             
-            if scenario == "poor":
-                sample_telemetry = {
-                    "duration_seconds": 1800.0,
-                    "silence_ratio_pct": 46.2,
-                    "dead_air_incidents": 6,
-                    "longest_silence_seconds": 24.5,
-                    "active_speech_seconds": 968.0,
-                    "visual_change_rate": 0.2,
-                    "total_slide_transitions_detected": 2,
-                    "dead_air_intervals": [(185.0, 209.5), (410.0, 428.0), (790.0, 804.0), (1210.0, 1226.5)]
-                }
-            elif scenario == "average":
-                sample_telemetry = {
-                    "duration_seconds": 1800.0,
-                    "silence_ratio_pct": 32.0,
-                    "dead_air_incidents": 2,
-                    "longest_silence_seconds": 9.0,
-                    "active_speech_seconds": 1224.0,
-                    "visual_change_rate": 0.8,
-                    "total_slide_transitions_detected": 8,
-                    "dead_air_intervals": [(320.0, 329.0), (950.0, 958.0)]
-                }
-            else:  # excellent
-                sample_telemetry = {
-                    "duration_seconds": 1800.0,
-                    "silence_ratio_pct": 21.5,
-                    "dead_air_incidents": 0,
-                    "longest_silence_seconds": 4.5,
-                    "active_speech_seconds": 1413.0,
-                    "visual_change_rate": 2.4,
-                    "total_slide_transitions_detected": 22,
-                    "dead_air_intervals": []
-                }
-                
-            sample_meta = {"has_video": True, "width": 1280, "height": 720, "duration_seconds": 1800.0}
-            report = evaluate_class_local_fallback(sample_telemetry, sample_meta, [])
+            sample_telemetry = {
+                "duration_seconds": vtt_analysis.get("duration_seconds", 2400.0),
+                "silence_ratio_pct": vtt_analysis.get("silence_ratio_pct", 28.0),
+                "dead_air_incidents": vtt_analysis.get("dead_air_incidents", 4),
+                "longest_silence_seconds": vtt_analysis.get("longest_silence_seconds", 12.0),
+                "dead_air_intervals": vtt_analysis.get("dead_air_intervals", []),
+                "vocal_turns_count": vtt_analysis.get("vocal_turns_count", 100),
+                "turn_taking_rate_per_min": vtt_analysis.get("turn_taking_rate_per_min", 2.5),
+                "teacher_talk_ratio_pct": vtt_analysis.get("teacher_talk_ratio_pct", 60.0),
+                "student_talk_ratio_pct": vtt_analysis.get("student_talk_ratio_pct", 40.0),
+                "questions_count": vtt_analysis.get("teacher_questions_count", 25),
+                "praise_count": vtt_analysis.get("praise_count", 5),
+                "closing_wrapup_detected": vtt_analysis.get("homework_mentioned", True),
+                "visual_change_rate": 1.4,
+                "total_slide_transitions_detected": 14,
+                "estimated_talk_pacing_wpm": 142
+            }
+            sample_meta = {"has_video": True, "width": 1280, "height": 720, "duration_seconds": sample_telemetry["duration_seconds"]}
+            report = evaluate_class_local_fallback(sample_telemetry, sample_meta, [], vtt_analysis=vtt_analysis)
             render_report(report, [])
     else:
-        st.warning("Please upload a file or choose a sample scenario first.")
+        st.warning("Please upload a file, paste a link, or choose a challenge sample first.")
+

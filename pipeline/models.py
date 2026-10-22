@@ -31,9 +31,19 @@ class Observation(BaseModel):
 class TelemetrySummary(BaseModel):
     duration_seconds: float = Field(default=0.0)
     silence_ratio_pct: float = Field(default=0.0, description="Percentage of class duration with silence/dead air")
-    dead_air_incidents: int = Field(default=0, description="Instances where silence exceeded 8 seconds")
+    dead_air_incidents: int = Field(default=0, description="Instances where silence exceeded 7 seconds")
     visual_change_rate: float = Field(default=0.0, description="Estimated slide/screen changes per minute")
     estimated_talk_pacing_wpm: Optional[float] = Field(default=None, description="Estimated words per minute")
+    vocal_turns_count: Optional[int] = Field(default=None, description="Total count of speaker turns / speech bursts")
+    turn_taking_rate_per_min: Optional[float] = Field(default=None, description="Turn-taking interactions per minute")
+    teacher_talk_ratio_pct: Optional[float] = Field(default=None, description="Dominant teacher talk percentage")
+    student_talk_ratio_pct: Optional[float] = Field(default=None, description="Student talk percentage")
+    longest_monologue_seconds: Optional[float] = Field(default=None, description="Longest continuous speech monologue without pause")
+    avg_speech_burst_seconds: Optional[float] = Field(default=None, description="Average speech burst duration")
+    questions_count: Optional[int] = Field(default=None, description="Total questions / prompts detected")
+    praise_count: Optional[int] = Field(default=None, description="Positive reinforcement / praise cues detected")
+    homework_mentioned: Optional[bool] = Field(default=None, description="Whether homework or practice was assigned")
+
 
 
 class EvaluationReport(BaseModel):

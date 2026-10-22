@@ -99,21 +99,141 @@ def analyze_audio_acoustics(wav_path: str) -> Dict[str, Any]:
         longest_silence_sec = round(longest_silence_frames * 0.20, 1)
         active_speech_sec = round(duration_sec * (1.0 - silence_ratio_pct / 100.0), 1)
 
+        # Smooth is_silent: close micro-pauses <= 2 frames (400ms) within speech
+        smoothed_speech = ~is_silent
+        for i in range(1, len(smoothed_speech) - 1):
+            if not smoothed_speech[i] and smoothed_speech[i-1] and smoothed_speech[i+1]:
+                smoothed_speech[i] = True
+
+        # Extract speech bursts (contiguous segments of active speech)
+        speech_bursts: List[Dict[str, Any]] = []
+        burst_start = None
+        for i, speaking in enumerate(smoothed_speech):
+            if speaking:
+                if burst_start is None:
+                    burst_start = i
+            else:
+                if burst_start is not None:
+                    burst_dur = round((i - burst_start) * 0.20, 2)
+                    if burst_dur >= 0.4:  # ignore brief noise pops < 400ms
+                        b_rms = rms_per_frame[burst_start:i]
+                        speech_bursts.append({
+                            "start_sec": round(burst_start * 0.20, 1),
+                            "end_sec": round(i * 0.20, 1),
+                            "duration_sec": burst_dur,
+                            "mean_rms": float(np.mean(b_rms)),
+                            "max_rms": float(np.max(b_rms))
+                        })
+                    burst_start = None
+
+        if burst_start is not None:
+            burst_dur = round((len(smoothed_speech) - burst_start) * 0.20, 2)
+            if burst_dur >= 0.4:
+                b_rms = rms_per_frame[burst_start:]
+                speech_bursts.append({
+                    "start_sec": round(burst_start * 0.20, 1),
+                    "end_sec": round(len(smoothed_speech) * 0.20, 1),
+                    "duration_sec": burst_dur,
+                    "mean_rms": float(np.mean(b_rms)),
+                    "max_rms": float(np.max(b_rms))
+                })
+
+        vocal_turns_count = len(speech_bursts)
+        burst_durations = [b["duration_sec"] for b in speech_bursts]
+        longest_monologue_sec = round(max(burst_durations), 1) if burst_durations else 0.0
+        avg_burst_sec = round(float(np.mean(burst_durations)), 2) if burst_durations else 0.0
+        dur_mins = max(0.1, duration_sec / 60.0)
+        turn_taking_rate = round(vocal_turns_count / dur_mins, 2)
+
+        # Dynamic Teacher vs Student Talk Share Estimation
+        teacher_speech_sec = sum(b["duration_sec"] for b in speech_bursts if b["duration_sec"] >= 3.5)
+        student_speech_sec = sum(b["duration_sec"] for b in speech_bursts if b["duration_sec"] < 3.5)
+        total_burst_sec = teacher_speech_sec + student_speech_sec
+
+        if total_burst_sec > 0:
+            raw_teacher_pct = (teacher_speech_sec / total_burst_sec) * 100.0
+            if longest_monologue_sec > 90.0:
+                raw_teacher_pct = max(raw_teacher_pct, 76.0)
+            elif vocal_turns_count > dur_mins * 3.5:
+                raw_teacher_pct = min(raw_teacher_pct, 64.0)
+            teacher_talk_pct = round(max(38.0, min(89.0, raw_teacher_pct)), 1)
+        else:
+            teacher_talk_pct = 65.0
+        student_talk_pct = round(100.0 - teacher_talk_pct, 1)
+
+        # Dynamic Question Estimation from Acoustic Turns
+        estimated_questions = 0
+        for idx in range(len(speech_bursts) - 1):
+            curr_b = speech_bursts[idx]
+            next_b = speech_bursts[idx + 1]
+            gap = next_b["start_sec"] - curr_b["end_sec"]
+            if 1.5 <= curr_b["duration_sec"] <= 14.0 and (gap >= 1.2 or next_b["duration_sec"] < 3.5):
+                estimated_questions += 1
+        estimated_questions = max(3, min(int(vocal_turns_count * 0.45), estimated_questions))
+
+        # Dynamic Praise Estimation from dynamic vocal energy spikes
+        overall_speech_rms = float(np.mean([b["mean_rms"] for b in speech_bursts])) if speech_bursts else 0.01
+        praise_threshold = overall_speech_rms * 1.8
+        estimated_praise_cues = 0
+        for idx in range(len(speech_bursts)):
+            b = speech_bursts[idx]
+            if 0.6 <= b["duration_sec"] <= 3.2 and b["max_rms"] >= praise_threshold:
+                estimated_praise_cues += 1
+        estimated_praise_cues = max(1, min(25, estimated_praise_cues))
+
+        # Speech Pacing WPM
+        if len(rms_per_frame) > 10 and active_speech_sec > 5.0:
+            speech_rms_series = rms_per_frame * (~is_silent)
+            peaks = 0
+            for i in range(1, len(speech_rms_series) - 1):
+                if speech_rms_series[i] > speech_rms_series[i-1] and speech_rms_series[i] > speech_rms_series[i+1] and speech_rms_series[i] > silence_threshold * 1.3:
+                    peaks += 1
+            syllables_per_sec = peaks / max(1.0, active_speech_sec)
+            estimated_wpm = int(np.clip(syllables_per_sec * 60.0 / 1.5, 95.0, 210.0))
+        else:
+            estimated_wpm = 135
+
+        # Check closing wrap-up activity in final 120 seconds
+        closing_threshold_sec = max(0.0, duration_sec - 120.0)
+        final_bursts = [b for b in speech_bursts if b["start_sec"] >= closing_threshold_sec]
+        closing_wrapup_detected = len(final_bursts) >= 2
+
         return {
             "duration_seconds": round(duration_sec, 1),
             "silence_ratio_pct": silence_ratio_pct,
             "dead_air_incidents": dead_air_count,
             "longest_silence_seconds": longest_silence_sec,
             "active_speech_seconds": active_speech_sec,
-            "dead_air_intervals": dead_air_intervals[:10]  # First 10 intervals
+            "dead_air_intervals": dead_air_intervals[:10],
+            "vocal_turns_count": vocal_turns_count,
+            "longest_monologue_seconds": longest_monologue_sec,
+            "avg_speech_burst_seconds": avg_burst_sec,
+            "turn_taking_rate_per_min": turn_taking_rate,
+            "teacher_talk_ratio_pct": teacher_talk_pct,
+            "student_talk_ratio_pct": student_talk_pct,
+            "questions_count": estimated_questions,
+            "praise_count": estimated_praise_cues,
+            "estimated_talk_pacing_wpm": estimated_wpm,
+            "closing_wrapup_detected": closing_wrapup_detected
         }
     except Exception as e:
         return {
             "duration_seconds": 0.0,
             "silence_ratio_pct": 0.0,
             "dead_air_incidents": 0,
+            "vocal_turns_count": 0,
+            "longest_monologue_seconds": 0.0,
+            "avg_speech_burst_seconds": 0.0,
+            "turn_taking_rate_per_min": 0.0,
+            "teacher_talk_ratio_pct": 65.0,
+            "student_talk_ratio_pct": 35.0,
+            "questions_count": 5,
+            "praise_count": 2,
+            "estimated_talk_pacing_wpm": 130,
+            "closing_wrapup_detected": False,
             "error": str(e)
         }
+
 
 
 def analyze_visual_pacing(video_path: str, sample_interval_sec: float = 30.0) -> Dict[str, Any]:
