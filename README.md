@@ -82,7 +82,23 @@ The application will launch automatically at `http://localhost:8501`.
 
 ---
 
+## 🛡️ Enterprise Security Features & Guardrails
+
+To protect student privacy and ensure safe multi-tenant usage, EduGrade AI implements multi-layered security controls:
+
+| Guardrail Layer | Security Control | Protection Mechanism |
+| :--- | :--- | :--- |
+| **SSRF Prevention** | `validate_safe_url` | Validates public schemes; resolves DNS and blocks requests to loopback (`127.0.0.1`), private subnets (`10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`), and AWS/GCP instance metadata endpoints (`169.254.169.254`). |
+| **COPPA / Minor PII Redaction** | `scrub_pii` | Automatically scans transcripts and user notes to redact phone numbers (`[PHONE_REDACTED]`), emails (`[EMAIL_REDACTED]`), and IP addresses before LLM inference or export. |
+| **Prompt Injection Defense** | `sanitize_prompt_injection` | Strips adversarial jailbreak phrases (`ignore previous instructions`, `bypass rubric`, `rate 100`) and encapsulates inputs inside structured `<untrusted_teacher_notes>` containers. |
+| **Zero Video Retention** | `purge_ephemeral_storage` | Session audio/video files are stored only in temporary cache; face biometrics and tracking are strictly disabled. Includes a one-click manual cache purge button. |
+| **DoS & Buffer Overflow** | File Size Capping | Uploads and streaming downloads are strictly capped at 500 MB with streaming byte counters to eliminate disk exhaustion attacks. |
+| **Path Traversal Defense** | `sanitize_filename` | Strips directory traversal sequences (`../`, `..\`) and special characters from user filenames before writing to disk. |
+
+---
+
 ## 🔒 Confidentiality & Child Privacy Notice
 In strict accordance with the challenge guidelines:
 * Class recordings are processed in ephemeral memory and discarded immediately upon analysis.
 * No personal child identifiable information or faces are stored, published, or transmitted to third-party databases.
+* Biometric face recognition is deliberately disabled to guarantee COPPA and student privacy compliance.
