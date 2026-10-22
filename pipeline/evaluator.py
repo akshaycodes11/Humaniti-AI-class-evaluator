@@ -438,6 +438,12 @@ def evaluate_class_local_fallback(
         strengths.append("Established personal rapport and greeting at class commencement.")
     if praise_count >= 8:
         strengths.append(f"Strong encouraging atmosphere with {praise_count} positive reinforcement cues detected.")
+    if hw_mentioned:
+        strengths.append("Concluded lesson with explicit homework practice assignments.")
+    if student_talk_ratio >= 38.0:
+        strengths.append(f"High student participation share ({student_talk_ratio:.1f}% student talk time).")
+    if visual_changes >= 1.5:
+        strengths.append(f"Active visual board engagement ({visual_changes:.1f} screen updates/min).")
 
     weaknesses = []
     if not hw_mentioned:
@@ -446,18 +452,74 @@ def evaluate_class_local_fallback(
         weaknesses.append(f"Infrequent praise cues ({praise_count} total); needs more energetic and pleasant encouragement.")
     if dead_air > 0:
         weaknesses.append(f"Recorded {dead_air} unprompted dead-air pauses exceeding 7 seconds (longest silence: {longest_silence:.1f}s).")
-    if longest_monologue > 90.0:
-        weaknesses.append(f"Longest continuous monologue reached {longest_monologue:.1f}s; break up lectures with frequent check-ins.")
+    if longest_monologue > 75.0:
+        weaknesses.append(f"Longest continuous monologue reached {longest_monologue:.1f}s ({teacher_talk_ratio:.1f}% teacher talk share); break up lectures with frequent check-ins.")
+    if not has_rapport:
+        weaknesses.append("Commenced lesson content abruptly without warm student greeting or rapport.")
+    if visual_changes < 0.5 and has_video:
+        weaknesses.append(f"Screen remained static ({visual_changes:.1f} updates/min); lacks visual annotations or board progression.")
+    if silence_pct > 45.0:
+        weaknesses.append(f"Elevated total silence ratio ({silence_pct:.1f}% of class duration).")
 
-    tips = [
-        "Ensure homework (HW) or next-session practice puzzles are clearly assigned before disconnecting.",
-        "Increase enthusiastic praise anchors ('fantastic work!', 'great deduction!') immediately following student responses.",
-        "Prompt the student after 4 seconds of silence rather than allowing pauses to exceed 7 seconds."
-    ]
+    # Dynamic Actionable Teacher Coaching Recommendations tailored specifically to observed gaps & strengths
+    tips: List[str] = []
+
+    # 1. Homework & Lesson Wrap-up
+    if not hw_mentioned:
+        tips.append("Establish an explicit 2-minute lesson wrap-up routine to assign homework or practice puzzles (e.g. 'Solve puzzles 1-3 on lichess before our next match').")
+    elif hw_mentioned and rating in ["Good", "Excellent"]:
+        tips.append("Solid wrap-up observed; reinforce accountability by having the child explain how they will approach their assigned practice moves before logging off.")
+
+    # 2. Dead-air & Silence Management
+    if dead_air >= 4 or longest_silence > 18.0:
+        tips.append(f"Dead-air mitigation: Recorded {dead_air} awkward pauses >7s (longest: {longest_silence:.1f}s). If a child is silent for >4s, offer a progressive scaffolding hint rather than waiting in silence.")
+    elif dead_air == 0 and turn_rate >= 4.0:
+        tips.append(f"Excellent conversational flow maintained ({turn_rate:.1f} turns/min with zero dead-air incidents). Continue using timely questions to sustain child attention.")
+
+    # 3. Emotional Climate & Praise Density
+    if praise_count < 6:
+        tips.append(f"Elevate emotional warmth: Only {praise_count} praise cues detected. Deliver immediate enthusiastic anchors ('Brilliant move!', 'Great deduction!') within 1 second of correct student responses.")
+    elif praise_count >= 12:
+        tips.append(f"Vibrant reinforcement noted ({praise_count} praise cues). Elevate this further by pairing praise with strategic rationales ('Great job securing the open file!') rather than generic 'Good'.")
+
+    # 4. Monologue vs Dialogue Balance
+    if longest_monologue > 75.0 or teacher_talk_ratio > 75.0:
+        tips.append(f"Curtail instructional monologues: Peak uninterrupted explanation reached {longest_monologue:.1f}s ({teacher_talk_ratio:.1f}% teacher talk share). Adopt the 30-second rule—pause and ask the student to articulate their next candidate move.")
+    elif 45.0 <= teacher_talk_ratio <= 65.0 and student_talk_ratio >= 35.0:
+        tips.append(f"Outstanding dialogue balance achieved ({student_talk_ratio:.1f}% student speaking share). Keep prioritizing child-led discovery over didactic lecturing.")
+
+    # 5. Questioning Strategy & Scaffolding
+    if q_per_10m < 10:
+        tips.append(f"Increase inquiry-based checks ({questions_count} questions across {dur_min:.1f} min). Convert explanations into guided prompts ('What square does black threaten right now?').")
+    elif q_per_10m >= 22:
+        tips.append(f"Rich questioning frequency ({questions_count} questions detected). Shift from binary 'yes/no' checks to higher-order 'why did you choose that piece?' reasoning.")
+
+    # 6. Visual Board Utility
+    if has_video and visual_changes < 0.6:
+        tips.append(f"Increase visual screen engagement: Only {visual_changes:.1f} screen transitions/min detected. Use arrows, square highlights, and interactive puzzle boards to anchor visual focus.")
+    elif has_video and visual_changes >= 2.0:
+        tips.append(f"Dynamic visual screen usage ({visual_changes:.1f} transitions/min). Ensure student has at least 3-5 seconds to visually process board positions before transitioning.")
+
+    # 7. Initial Greeting & Rapport
+    if not has_rapport:
+        tips.append("Invest the initial 60-90 seconds in personal rapport building (asking about their day or recent games) to lower the student's affective filter before beginning chess instruction.")
+
+    # 8. Speech Cadence
+    if wpm > 175:
+        tips.append(f"Moderate your vocal cadence (~{wpm} WPM detected). Elementary students need 20-30% more auditory processing time when evaluating tactical positions.")
+    elif wpm < 110 and dur_min > 10:
+        tips.append(f"Increase conversational tempo and vocal inflection (~{wpm} WPM detected) to prevent attention drift during extended position analysis.")
+
+    # Ensure 3-4 distinct, prioritized tips
+    if len(tips) < 3:
+        tips.append("Encourage self-correction: when a blunder occurs, prompt the child with 'Take another look—do you see any undefended pieces?' before revealing the answer.")
+        tips.append("Periodically verify student comprehension by asking them to teach the key rule or concept back to you in their own words.")
+    tips = tips[:4]
 
     def to_level(s: int) -> str:
         if s >= 8: return "Excellent"
         if s >= 7: return "Good"
+
         if s >= 5: return "Average"
         return "Poor"
 
