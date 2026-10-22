@@ -174,7 +174,7 @@ Output your complete evaluation as a SINGLE valid JSON object strictly matching 
   "specific_observations": [
     {
       "timestamp": "MM:SS",
-      "category": "Student Engagement" | "Instructional Scaffolding" | "Praise & Tone" | "Screen & Visual Utility" | "Classroom Pacing",
+      "category": "Student Engagement" | "Instructional Scaffolding" | "Praise & Tone" | "Emotional Climate" | "Screen & Visual Utility" | "Classroom Pacing" | "Other",
       "observation_type": "Strength" | "Improvement Area" | "Notable Event",
       "evidence": "<Specific detail of what was seen or heard>"
     }
