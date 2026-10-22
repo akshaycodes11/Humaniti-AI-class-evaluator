@@ -50,12 +50,47 @@ def evaluate_class_with_gemini(
     Run multimodal evaluation using Google Gemini 1.5/2.0 Flash (Free Tier).
     Sends visual keyframes, telemetry metrics, and returns a verified EvaluationReport.
     """
+    # Suppress verbose gRPC / ALTS platform warnings on local machines
+    os.environ["GRPC_VERBOSITY"] = "ERROR"
+    os.environ["GLOG_minloglevel"] = "2"
     import google.generativeai as genai
     
-    genai.configure(api_key=api_key)
+    genai.configure(api_key=api_key.strip())
     
-    # Use gemini-1.5-flash or gemini-2.0-flash
-    model_name = "gemini-1.5-flash"
+    # Prioritized Gemini models available in Google AI Studio
+    candidate_models = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-flash-002",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+        "gemini-1.5-pro-latest",
+        "gemini-pro"
+    ]
+    
+    # Query API to find exact model identifiers enabled for this key
+    try:
+        supported_names = [
+            m.name for m in genai.list_models()
+            if "generateContent" in getattr(m, "supported_generation_methods", [])
+        ]
+        if supported_names:
+            ordered = []
+            for cand in candidate_models:
+                for s in supported_names:
+                    if cand in s or s.endswith(f"/{cand}"):
+                        if s not in ordered:
+                            ordered.append(s)
+            for s in supported_names:
+                if s not in ordered:
+                    ordered.append(s)
+            if ordered:
+                candidate_models = ordered
+    except Exception as list_err:
+        pass
     
     # Prepare prompt parts
     prompt_content: List[Any] = []
@@ -153,13 +188,41 @@ ONLY output the raw JSON object. Do not wrap in markdown quotes if possible.
 """
     prompt_content.append(json_schema_prompt)
 
+    response = None
+    last_error = None
+    successful_model = None
+
+    for candidate in candidate_models:
+        try:
+            model = genai.GenerativeModel(
+                model_name=candidate,
+                system_instruction=PEDAGOGICAL_SYSTEM_INSTRUCTION,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            response = model.generate_content(prompt_content)
+            if response and getattr(response, "text", None):
+                successful_model = candidate
+                break
+        except Exception as e_json:
+            # If response_mime_type fails or model is older, retry with standard generate_content
+            try:
+                model = genai.GenerativeModel(
+                    model_name=candidate,
+                    system_instruction=PEDAGOGICAL_SYSTEM_INSTRUCTION
+                )
+                response = model.generate_content(prompt_content)
+                if response and getattr(response, "text", None):
+                    successful_model = candidate
+                    break
+            except Exception as e_std:
+                last_error = e_std
+                continue
+
+    if not response or not getattr(response, "text", None):
+        print(f"Gemini API evaluation failed across all candidate models (Last error: {last_error}). Falling back to local deterministic evaluation engine.")
+        return evaluate_class_local_fallback(telemetry, media_metadata, keyframe_paths, vtt_analysis=vtt_analysis)
+
     try:
-        model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=PEDAGOGICAL_SYSTEM_INSTRUCTION,
-            generation_config={"response_mime_type": "application/json"}
-        )
-        response = model.generate_content(prompt_content)
         raw_text = response.text.strip()
         
         # Clean any accidental markdown fence
@@ -191,8 +254,8 @@ ONLY output the raw JSON object. Do not wrap in markdown quotes if possible.
             homework_mentioned=telemetry.get("closing_wrapup_detected")
         )
         return report
-    except Exception as e:
-        print(f"Gemini API evaluation failed or fallback needed: {e}")
+    except Exception as parse_err:
+        print(f"Failed to parse Gemini model output ({parse_err}). Falling back to calibrated local engine.")
         return evaluate_class_local_fallback(telemetry, media_metadata, keyframe_paths, vtt_analysis=vtt_analysis)
 
 
