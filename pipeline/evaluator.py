@@ -61,7 +61,6 @@ def evaluate_class_with_gemini(
         "gemini-1.5-flash",
         "gemini-1.5-flash-latest",
         "gemini-2.0-flash",
-        "gemini-1.5-pro",
     ]
     
     # Prepare prompt parts
@@ -81,6 +80,8 @@ def evaluate_class_with_gemini(
 - Praise / Emotional Cues Detected: {telemetry.get('praise_count', 'N/A')}
 - Screen/Slide Transition Rate: {telemetry.get('visual_change_rate', 0)} transitions per minute
 - Speech Pacing: {telemetry.get('estimated_talk_pacing_wpm', 135)} words per minute
+- Audio Quality Health: {telemetry.get('audio_health_status', 'Clean & Stable')} ({telemetry.get('audio_health_score', 92)}/100 Health Score)
+- Total Audio Glitches / Stutters: {telemetry.get('audio_glitches_count', 0)} incidents (Clipping: {telemetry.get('clipping_ratio_pct', 0.0)}%, Packet-Loss Drops: {telemetry.get('choppy_dropouts_count', 0)}, SNR: {telemetry.get('estimated_snr_db', 22.0)} dB)
 - Homework / Wrap-up Activity Detected: {telemetry.get('closing_wrapup_detected', 'N/A')}
 - Dead Air Intervals: {telemetry.get('dead_air_intervals', [])}
 - Video Resolution: {media_metadata.get('width', 0)}x{media_metadata.get('height', 0)}
@@ -209,7 +210,14 @@ ONLY output the raw JSON object. Do not wrap in markdown quotes if possible.
             avg_speech_burst_seconds=telemetry.get("avg_speech_burst_seconds"),
             questions_count=telemetry.get("questions_count"),
             praise_count=telemetry.get("praise_count"),
-            homework_mentioned=telemetry.get("closing_wrapup_detected")
+            homework_mentioned=telemetry.get("closing_wrapup_detected"),
+            audio_health_score=int(telemetry.get("audio_health_score", 92)),
+            audio_health_status=str(telemetry.get("audio_health_status", "Clean & Stable")),
+            audio_glitches_count=int(telemetry.get("audio_glitches_count", 0)),
+            clipping_ratio_pct=float(telemetry.get("clipping_ratio_pct", 0.0)),
+            choppy_dropouts_count=int(telemetry.get("choppy_dropouts_count", 0)),
+            estimated_snr_db=float(telemetry.get("estimated_snr_db", 22.0)),
+            audio_glitch_events=telemetry.get("audio_glitch_events", [])
         )
         return report
     except Exception as e:
@@ -378,11 +386,11 @@ def evaluate_class_local_fallback(
     composite = int(np.clip(composite, 18, 96))
 
     # Categorization into 4 quality tiers
-    if composite >= 78:
+    if composite >= 75:
         rating = "Excellent"
-    elif composite >= 64:
+    elif composite >= 65:
         rating = "Good"
-    elif composite >= 48:
+    elif composite >= 50:
         rating = "Average"
     else:
         rating = "Poor"
@@ -621,7 +629,14 @@ def evaluate_class_local_fallback(
             avg_speech_burst_seconds=float(telemetry.get("avg_speech_burst_seconds", 2.5)),
             questions_count=questions_count,
             praise_count=praise_count,
-            homework_mentioned=hw_mentioned
+            homework_mentioned=hw_mentioned,
+            audio_health_score=int(telemetry.get("audio_health_score", 92)),
+            audio_health_status=str(telemetry.get("audio_health_status", "Clean & Stable")),
+            audio_glitches_count=int(telemetry.get("audio_glitches_count", 0)),
+            clipping_ratio_pct=float(telemetry.get("clipping_ratio_pct", 0.0)),
+            choppy_dropouts_count=int(telemetry.get("choppy_dropouts_count", 0)),
+            estimated_snr_db=float(telemetry.get("estimated_snr_db", 22.0)),
+            audio_glitch_events=telemetry.get("audio_glitch_events", [])
         )
     )
 

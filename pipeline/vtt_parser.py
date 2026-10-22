@@ -123,6 +123,31 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
     first_text = " ".join([u["text"].lower() for u in utterances[:10]])
     has_greeting = bool(re.search(r"\b(good evening|good afternoon|good morning|hello|hi|welcome|how are you|introduce|introduction)\b", first_text))
 
+    # Technical audio / connection issues detected in transcript
+    technical_glitches = []
+    tech_patterns = [
+        r"\bcan you hear me\b",
+        r"\bam i audible\b",
+        r"\byou are breaking up\b",
+        r"\baudio is lagging\b",
+        r"\bcan't hear\b",
+        r"\bcannot hear\b",
+        r"\bvoice is breaking\b",
+        r"\bvoice is cracking\b",
+        r"\bscreen is frozen\b",
+        r"\bcan't see the screen\b",
+        r"\breconnect\b"
+    ]
+    tech_regex = re.compile("|".join(tech_patterns), re.IGNORECASE)
+    for u in utterances:
+        if tech_regex.search(u["text"]):
+            technical_glitches.append({
+                "timestamp": u.get("start", "00:00")[:5],
+                "type": "Technical / Audio Glitch Mention",
+                "severity": "Medium",
+                "description": f"{u['speaker']}: \"{u['text']}\""
+            })
+
     return {
         "utterances_count": len(utterances),
         "primary_teacher": primary_teacher,
@@ -133,6 +158,8 @@ def parse_vtt_file(vtt_path: str) -> Dict[str, Any]:
         "teacher_questions_count": teacher_questions,
         "homework_mentioned": hw_mentioned,
         "rapport_greeting_detected": has_greeting,
+        "audio_glitches_count": len(technical_glitches),
+        "audio_glitch_events": technical_glitches[:8],
         "total_words": total_words,
         "duration_seconds": round(class_duration_s, 1),
         "silence_ratio_pct": silence_ratio_pct,

@@ -83,10 +83,18 @@ def node_acoustic_telemetry(state: ClassEvaluationState) -> Dict[str, Any]:
             "dead_air_incidents": 2,
             "longest_silence_seconds": 12.0,
             "active_speech_seconds": fallback_dur * 0.71,
-            "dead_air_intervals": [(135.0, 147.0), (320.0, 335.0)]
+            "dead_air_intervals": [(135.0, 147.0), (320.0, 335.0)],
+            "audio_health_score": 92,
+            "audio_health_status": "Clean & Stable",
+            "audio_glitches_count": 0,
+            "clipping_ratio_pct": 0.0,
+            "choppy_dropouts_count": 0,
+            "transient_clicks_count": 0,
+            "estimated_snr_db": 22.0,
+            "audio_glitch_events": []
         }
         
-    log = f"[AcousticNode] Duration: {round(telemetry.get('duration_seconds', 0)/60.0, 1)} min | Silence Ratio: {telemetry.get('silence_ratio_pct')}% | Dead-Air Incidents: {telemetry.get('dead_air_incidents')}"
+    log = f"[AcousticNode] Duration: {round(telemetry.get('duration_seconds', 0)/60.0, 1)} min | Silence: {telemetry.get('silence_ratio_pct')}% | Audio Health: {telemetry.get('audio_health_status', 'Clean')} ({telemetry.get('audio_health_score', 90)}/100, {telemetry.get('audio_glitches_count', 0)} glitches)"
     return {
         "audio_path": wav_path if audio_extracted else None,
         "acoustic_telemetry": telemetry,
@@ -223,7 +231,12 @@ def node_pedagogical_evaluator(state: ClassEvaluationState) -> Dict[str, Any]:
     vtt_data = state.get("vtt_analysis", {}) or {}
     
     # If acoustic telemetry was empty or zero, populate from transcript timing
-    for k in ["duration_seconds", "silence_ratio_pct", "dead_air_incidents", "longest_silence_seconds", "dead_air_intervals", "vocal_turns_count", "turn_taking_rate_per_min", "teacher_talk_ratio_pct", "student_talk_ratio_pct", "praise_count"]:
+    for k in [
+        "duration_seconds", "silence_ratio_pct", "dead_air_incidents", "longest_silence_seconds",
+        "dead_air_intervals", "vocal_turns_count", "turn_taking_rate_per_min", "teacher_talk_ratio_pct",
+        "student_talk_ratio_pct", "praise_count", "audio_health_score", "audio_health_status",
+        "audio_glitches_count", "clipping_ratio_pct", "choppy_dropouts_count", "estimated_snr_db", "audio_glitch_events"
+    ]:
         if not combined_telemetry.get(k) and vtt_data.get(k) is not None:
             combined_telemetry[k] = vtt_data[k]
 

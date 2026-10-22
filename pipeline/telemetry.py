@@ -198,7 +198,17 @@ def analyze_audio_acoustics(wav_path: str) -> Dict[str, Any]:
         final_bursts = [b for b in speech_bursts if b["start_sec"] >= closing_threshold_sec]
         closing_wrapup_detected = len(final_bursts) >= 2
 
-        return {
+        # Detect Audio Glitches, Clipping, Micro-Dropouts, and Health Score
+        glitch_data = detect_audio_glitches(
+            audio=audio,
+            sample_rate=sample_rate,
+            rms_per_frame=rms_per_frame,
+            is_silent=is_silent,
+            silence_threshold=silence_threshold,
+            duration_sec=duration_sec
+        )
+
+        res = {
             "duration_seconds": round(duration_sec, 1),
             "silence_ratio_pct": silence_ratio_pct,
             "dead_air_incidents": dead_air_count,
@@ -216,6 +226,8 @@ def analyze_audio_acoustics(wav_path: str) -> Dict[str, Any]:
             "estimated_talk_pacing_wpm": estimated_wpm,
             "closing_wrapup_detected": closing_wrapup_detected
         }
+        res.update(glitch_data)
+        return res
     except Exception as e:
         return {
             "duration_seconds": 0.0,
@@ -231,8 +243,151 @@ def analyze_audio_acoustics(wav_path: str) -> Dict[str, Any]:
             "praise_count": 2,
             "estimated_talk_pacing_wpm": 130,
             "closing_wrapup_detected": False,
+            "audio_health_score": 85,
+            "audio_health_status": "Clean & Stable",
+            "audio_glitches_count": 0,
+            "clipping_ratio_pct": 0.0,
+            "choppy_dropouts_count": 0,
+            "transient_clicks_count": 0,
+            "estimated_snr_db": 22.0,
+            "audio_glitch_events": [],
             "error": str(e)
         }
+
+
+def format_seconds_to_timestamp(seconds: float) -> str:
+    """Format seconds into MM:SS string."""
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    return f"{mins:02d}:{secs:02d}"
+
+
+def detect_audio_glitches(
+    audio: np.ndarray,
+    sample_rate: int,
+    rms_per_frame: np.ndarray,
+    is_silent: np.ndarray,
+    silence_threshold: float,
+    duration_sec: float
+) -> Dict[str, Any]:
+    """
+    Deterministic DSP Audio Glitch & Quality Health Detector:
+    1. Digital Clipping / Peak Saturation (microphone distortion).
+    2. Micro-Dropouts / Choppy Jitter (network packet-loss stuttering).
+    3. Sharp Transient Pops / Clicks (hardware disconnects or crackle).
+    4. Signal-to-Noise Ratio (SNR in dB) and noise floor stability.
+    5. Overall Audio Health Score (0 - 100) and timestamped glitch log.
+    """
+    if len(audio) == 0 or sample_rate <= 0:
+        return {
+            "audio_health_score": 90,
+            "audio_health_status": "Clean & Stable",
+            "audio_glitches_count": 0,
+            "clipping_ratio_pct": 0.0,
+            "choppy_dropouts_count": 0,
+            "transient_clicks_count": 0,
+            "estimated_snr_db": 22.0,
+            "audio_glitch_events": []
+        }
+
+    total_samples = len(audio)
+    glitch_events: List[Dict[str, Any]] = []
+
+    # --- 1. Digital Clipping & Distortion Detection ---
+    clipped_mask = np.abs(audio) >= 0.985
+    clipping_samples = int(np.sum(clipped_mask))
+    clipping_ratio_pct = round((clipping_samples / float(total_samples)) * 100.0, 3)
+
+    # Group into 100ms blocks to detect distortion bursts
+    clip_block_size = int(sample_rate * 0.1)
+    clipping_bursts = 0
+    if clip_block_size > 0:
+        num_clip_blocks = total_samples // clip_block_size
+        if num_clip_blocks > 0:
+            clip_blocks = clipped_mask[:num_clip_blocks * clip_block_size].reshape((num_clip_blocks, clip_block_size))
+            clipped_per_block = np.sum(clip_blocks, axis=1)
+            severe_blocks = np.where(clipped_per_block >= 8)[0]
+            clipping_bursts = len(severe_blocks)
+            for blk_idx in severe_blocks[:5]:
+                t_sec = blk_idx * 0.1
+                glitch_events.append({
+                    "timestamp": format_seconds_to_timestamp(t_sec),
+                    "type": "Microphone Clipping / Distortion",
+                    "severity": "High" if clipped_per_block[blk_idx] > 30 else "Medium",
+                    "description": f"Waveform saturated ({clipped_per_block[blk_idx]} samples clipped); causes harsh voice distortion"
+                })
+
+    # --- 2. Micro-Dropouts / Choppy Packet Loss Detection ---
+    fine_win = int(sample_rate * 0.04)  # 40ms window
+    choppy_dropouts = 0
+    if fine_win > 0 and total_samples > fine_win * 5:
+        num_fine = total_samples // fine_win
+        fine_frames = audio[:num_fine * fine_win].reshape((num_fine, fine_win))
+        fine_rms = np.sqrt(np.mean(fine_frames ** 2, axis=1) + 1e-12)
+        fine_silent = fine_rms < (silence_threshold * 0.35)
+
+        for i in range(2, len(fine_silent) - 2):
+            if fine_silent[i] and not fine_silent[i-1] and not fine_silent[i-2] and not fine_silent[i+1] and not fine_silent[i+2]:
+                choppy_dropouts += 1
+                if len(glitch_events) < 10 and (len(glitch_events) == 0 or glitch_events[-1]["type"] != "Micro-Dropout (Packet Loss)"):
+                    t_sec = i * 0.04
+                    glitch_events.append({
+                        "timestamp": format_seconds_to_timestamp(t_sec),
+                        "type": "Micro-Dropout (Packet Loss)",
+                        "severity": "Medium",
+                        "description": "Sudden 40-80ms audio signal drop during active speech; causes choppy voice"
+                    })
+
+    # --- 3. Sharp Transient Pops & Clicks ---
+    step_diffs = np.abs(np.diff(audio))
+    pop_indices = np.where(step_diffs > 0.65)[0]
+    transient_clicks = len(pop_indices)
+    if transient_clicks > 5 and len(glitch_events) < 12:
+        first_pop_time = pop_indices[0] / float(sample_rate)
+        glitch_events.append({
+            "timestamp": format_seconds_to_timestamp(first_pop_time),
+            "type": "Audio Click / Static Pop",
+            "severity": "Low",
+            "description": f"Sharp electrical pop or static burst detected ({transient_clicks} clicks total across recording)"
+        })
+
+    # --- 4. Signal-to-Noise Ratio (SNR) in dB ---
+    speech_frames_rms = rms_per_frame[~is_silent]
+    noise_frames_rms = rms_per_frame[is_silent]
+    mean_speech_rms = float(np.mean(speech_frames_rms)) if len(speech_frames_rms) > 0 else 0.02
+    mean_noise_rms = float(np.mean(noise_frames_rms)) if len(noise_frames_rms) > 0 else 0.002
+    snr_db = round(20.0 * np.log10(max(mean_speech_rms, 1e-4) / max(mean_noise_rms, 1e-5)), 1)
+    snr_db = float(np.clip(snr_db, 6.0, 36.0))
+
+    # --- 5. Composite Audio Health Score & Classification ---
+    total_glitches = clipping_bursts + choppy_dropouts + min(transient_clicks, 20)
+    penalties = 0.0
+    if clipping_ratio_pct > 0.01:
+        penalties += min(30.0, clipping_ratio_pct * 200.0)
+    penalties += min(35.0, choppy_dropouts * 1.5)
+    penalties += min(15.0, min(transient_clicks, 50) * 0.15)
+    if snr_db < 16.0:
+        penalties += (16.0 - snr_db) * 1.8
+
+    health_score = int(np.clip(100.0 - penalties, 25.0, 100.0))
+
+    if health_score >= 85:
+        health_status = "Clean & Stable"
+    elif health_score >= 70:
+        health_status = "Acceptable / Minor Glitches"
+    else:
+        health_status = "Degraded / Frequent Glitches"
+
+    return {
+        "audio_health_score": health_score,
+        "audio_health_status": health_status,
+        "audio_glitches_count": total_glitches,
+        "clipping_ratio_pct": clipping_ratio_pct,
+        "choppy_dropouts_count": choppy_dropouts,
+        "transient_clicks_count": transient_clicks,
+        "estimated_snr_db": snr_db,
+        "audio_glitch_events": glitch_events[:8]
+    }
 
 
 

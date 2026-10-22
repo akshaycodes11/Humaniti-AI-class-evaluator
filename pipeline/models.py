@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Dict
+from typing import List, Literal, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -43,6 +43,15 @@ class TelemetrySummary(BaseModel):
     questions_count: Optional[int] = Field(default=None, description="Total questions / prompts detected")
     praise_count: Optional[int] = Field(default=None, description="Positive reinforcement / praise cues detected")
     homework_mentioned: Optional[bool] = Field(default=None, description="Whether homework or practice was assigned")
+
+    # Audio Glitch & Quality Health Telemetry
+    audio_health_score: int = Field(default=92, ge=0, le=100, description="Overall audio fidelity and stability score (0-100)")
+    audio_health_status: str = Field(default="Clean & Stable", description="Audio quality classification (Clean, Minor Glitches, Degraded)")
+    audio_glitches_count: int = Field(default=0, description="Total detected audio glitches (clipping, dropouts, pops)")
+    clipping_ratio_pct: float = Field(default=0.0, description="Percentage of audio with digital clipping/distortion")
+    choppy_dropouts_count: int = Field(default=0, description="Count of micro-dropouts caused by network packet loss")
+    estimated_snr_db: float = Field(default=22.0, description="Estimated Signal-to-Noise Ratio in decibels")
+    audio_glitch_events: List[Dict[str, Any]] = Field(default_factory=list, description="Timestamped log of specific audio glitch incidents")
 
 
 
