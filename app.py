@@ -244,56 +244,6 @@ with input_tab2:
 
 
 
-# Quick sample selector for testing
-with st.expander("💡 Or test with pre-configured 8x8 Challenge Samples (One-Click)", expanded=True):
-    st.caption("Select any real 8x8 class recording or transcript from the Humaniti challenge dataset across all 4 quality tiers:")
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        st.markdown("**🌟 Excellent Quality**")
-        if st.button("🌟 B491 Beginner (Ayswarya)", width="stretch"):
-            vtt = os.path.join("dataset_samples", "transcripts", "excellent_B491_beginner.vtt")
-            st.session_state["selected_sample_vtt"] = vtt
-            st.session_state["selected_sample_title"] = "B491 Beginner (Ayswarya Joseph - Excellent)"
-            st.session_state["custom_file_path"] = None
-        if st.button("🌟 B472 Intermediate (Ayswarya)", width="stretch"):
-            vtt = os.path.join("dataset_samples", "transcripts", "excellent_B472_intermediate.vtt")
-            st.session_state["selected_sample_vtt"] = vtt
-            st.session_state["selected_sample_title"] = "B472 Intermediate (Ayswarya Joseph - Excellent)"
-            st.session_state["custom_file_path"] = None
-    with col_s2:
-        st.markdown("**🟢 Good & 🟡 Average Quality**")
-        if st.button("🟢 B552 Beginner (Dheeraj - Good)", width="stretch"):
-            vtt = os.path.join("dataset_samples", "transcripts", "good_B552_beginner.vtt")
-            st.session_state["selected_sample_vtt"] = vtt
-            st.session_state["selected_sample_title"] = "B552 Beginner (Dheeraj - Good)"
-            st.session_state["custom_file_path"] = None
-        if st.button("🟡 B435 Video + Audio (Sumit - Avg)", width="stretch"):
-            mp4_path = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate Part  - 2026-08-28.mp4")
-            vtt_path = os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate-transcript-1.1.vtt")
-            st.session_state["custom_file_path"] = mp4_path
-            st.session_state["custom_vtt_path"] = vtt_path
-            st.session_state["selected_sample_vtt"] = vtt_path
-            st.session_state["selected_sample_title"] = "B435 Intermediate Video + Audio (Sumit Ranjan - Average)"
-    with col_s3:
-        st.markdown("**🔴 Weak & ⚠️ Quality Issues**")
-        if st.button("🔴 B558 Beginner (Pranav - Weak)", width="stretch"):
-            vtt = os.path.join("dataset_samples", "transcripts", "weak_B558_beginner.vtt")
-            st.session_state["selected_sample_vtt"] = vtt
-            st.session_state["selected_sample_title"] = "B558 Beginner (Pranav - Weak/Poor)"
-            st.session_state["custom_file_path"] = None
-        if st.button("⚠️ B392 Beginner (Quality Issue)", width="stretch"):
-            vtt = os.path.join("dataset_samples", "transcripts", "quality_issue_B392_beginner.vtt")
-            st.session_state["selected_sample_vtt"] = vtt
-            st.session_state["selected_sample_title"] = "B392 Beginner (Audio Glitches & Technical Disconnects)"
-            st.session_state["custom_file_path"] = None
-
-if "custom_file_path" in st.session_state and st.session_state["custom_file_path"] and input_file_path is None:
-    input_file_path = st.session_state["custom_file_path"]
-    input_vtt_path = st.session_state.get("custom_vtt_path", None)
-elif "selected_sample_vtt" in st.session_state and input_vtt_path is None and input_file_path is None:
-    input_vtt_path = st.session_state["selected_sample_vtt"]
-
-
 # Action: Run Evaluation
 st.divider()
 st.markdown("### ⚙️ 2. Run Quality Assessment")
@@ -305,10 +255,9 @@ with col_eval2:
     if input_file_path:
         st.info(f"Ready to evaluate media: **{os.path.basename(input_file_path)}**")
     elif input_vtt_path:
-        title = st.session_state.get("selected_sample_title", os.path.basename(input_vtt_path))
-        st.info(f"Ready to evaluate challenge sample: **{title}**")
+        st.info(f"Ready to evaluate transcript: **{os.path.basename(input_vtt_path)}**")
     else:
-        st.warning("Please upload a file, paste a link, or select a sample class above.")
+        st.warning("Please upload a recording or paste a media link above.")
 
 
 def render_report(report: EvaluationReport, keyframes):
@@ -674,8 +623,8 @@ if eval_button:
             st.error("LangGraph failed to produce final report.")
 
     elif input_vtt_path and os.path.exists(input_vtt_path):
-        sample_title = st.session_state.get("selected_sample_title", os.path.basename(input_vtt_path))
-        with st.spinner(f"Evaluating {sample_title} with dynamic pedagogical reasoning..."):
+        vtt_title = os.path.basename(input_vtt_path)
+        with st.spinner(f"Evaluating {vtt_title} with dynamic pedagogical reasoning..."):
             vtt_analysis = parse_vtt_file(input_vtt_path)
             
             sample_telemetry = {
@@ -716,5 +665,5 @@ if eval_button:
             report = evaluate_class_local_fallback(sample_telemetry, sample_meta, [], vtt_analysis=vtt_analysis)
             render_report(report, [])
     else:
-        st.warning("Please upload a file, paste a link, or choose a challenge sample first.")
+        st.warning("Please upload a file or paste a link first.")
 
