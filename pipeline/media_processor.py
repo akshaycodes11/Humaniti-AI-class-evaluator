@@ -133,12 +133,46 @@ def extract_representative_keyframes(
     return results
 
 
+import re
+
+
+def probe_media_duration_ffmpeg(file_path: str) -> float:
+    """Use FFmpeg container probe to determine duration for any video or audio file."""
+    if not os.path.exists(file_path):
+        return 0.0
+    try:
+        ffmpeg_bin = get_ffmpeg_binary()
+        cmd = [ffmpeg_bin, "-i", file_path]
+        res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, timeout=10)
+        # Look for Duration: 00:37:53.69
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", res.stderr)
+        if m:
+            h, mn, s = float(m.group(1)), float(m.group(2)), float(m.group(3))
+            return round(h * 3600.0 + mn * 60.0 + s, 1)
+    except Exception:
+        pass
+    return 0.0
+
+
+def check_is_vtt_file(file_path: str) -> bool:
+    """Check if file starts with WEBVTT or contains WebVTT cue header."""
+    if not os.path.exists(file_path) or os.path.getsize(file_path) > 10 * 1024 * 1024:
+        return False
+    try:
+        with open(file_path, "rb") as f:
+            chunk = f.read(512)
+        return b"WEBVTT" in chunk or b"-->" in chunk
+    except Exception:
+        return False
+
+
 def get_media_metadata(file_path: str) -> dict:
     """Return video/audio basic properties: duration, has_video, resolution."""
     metadata = {
         "file_path": file_path,
         "file_size_mb": round(os.path.getsize(file_path) / (1024 * 1024), 2) if os.path.exists(file_path) else 0.0,
         "has_video": False,
+        "is_transcript": False,
         "duration_seconds": 0.0,
         "width": 0,
         "height": 0
@@ -147,6 +181,18 @@ def get_media_metadata(file_path: str) -> dict:
     if not os.path.exists(file_path):
         return metadata
 
+    # 1. Check if the file is actually a WebVTT transcript (even if misnamed as .mp4)
+    if check_is_vtt_file(file_path):
+        metadata["is_transcript"] = True
+        try:
+            from pipeline.vtt_parser import parse_vtt_file
+            vtt_info = parse_vtt_file(file_path)
+            metadata["duration_seconds"] = vtt_info.get("duration_seconds", 0.0)
+        except Exception:
+            pass
+        return metadata
+
+    # 2. Try OpenCV for video files
     cap = cv2.VideoCapture(file_path)
     if cap.isOpened():
         total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -158,6 +204,26 @@ def get_media_metadata(file_path: str) -> dict:
             metadata["duration_seconds"] = round(total_frames / fps, 1)
             metadata["width"] = width
             metadata["height"] = height
+        elif width > 0 and height > 0:
+            metadata["has_video"] = True
+            metadata["width"] = width
+            metadata["height"] = height
         cap.release()
-        
+
+    # 3. If OpenCV returned 0.0 duration, probe with FFmpeg (supports pure audio, streaming WebM/MP4, VFR)
+    if metadata["duration_seconds"] <= 0.0:
+        ff_dur = probe_media_duration_ffmpeg(file_path)
+        if ff_dur > 0.0:
+            metadata["duration_seconds"] = ff_dur
+            
+    # 4. If still 0 and file is a WAV audio file, probe sample rate / length directly
+    if metadata["duration_seconds"] <= 0.0 and file_path.lower().endswith(".wav"):
+        try:
+            from scipy.io import wavfile
+            sr, data = wavfile.read(file_path)
+            if sr > 0:
+                metadata["duration_seconds"] = round(len(data) / float(sr), 1)
+        except Exception:
+            pass
+
     return metadata

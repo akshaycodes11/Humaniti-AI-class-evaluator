@@ -224,14 +224,23 @@ with input_tab2:
             with st.spinner("Resolving and downloading media with safety checks..."):
                 success, path, msg = download_media_from_url(url_input, working_dir)
                 if success:
-                    input_file_path = path
-                    st.session_state["downloaded_file_path"] = path
-                    st.success(f"{msg}: `{os.path.basename(path)}`")
+                    if path.endswith(".vtt"):
+                        input_vtt_path = path
+                        st.session_state["downloaded_vtt_path"] = path
+                        st.session_state.pop("downloaded_file_path", None)
+                        st.success(f"Recognized Transcript File (`{os.path.basename(path)}`): Loaded successfully.")
+                    else:
+                        input_file_path = path
+                        st.session_state["downloaded_file_path"] = path
+                        st.session_state.pop("downloaded_vtt_path", None)
+                        st.success(f"{msg}: `{os.path.basename(path)}`")
                 else:
                     st.error(f"Download blocked or failed: {msg}")
 
     if "downloaded_file_path" in st.session_state and input_file_path is None:
         input_file_path = st.session_state["downloaded_file_path"]
+    if "downloaded_vtt_path" in st.session_state and input_vtt_path is None:
+        input_vtt_path = st.session_state["downloaded_vtt_path"]
 
 
 
@@ -315,13 +324,15 @@ def render_report(report: EvaluationReport, keyframes):
         st.markdown(f"<h1 style='margin-top: 10px; margin-bottom: 0;'>{report.overall_score} <span style='font-size: 1.5rem; color: #6B7280;'>/ 100</span></h1>", unsafe_allow_html=True)
         st.caption(f"Evaluation Confidence: {int(report.confidence * 100)}%")
         
+    dur_sec = report.telemetry.duration_seconds if (report.telemetry and report.telemetry.duration_seconds and report.telemetry.duration_seconds > 0) else 1800.0
+    dur_display = f"{round(dur_sec / 60.0, 1)} min"
     with col_hero2:
-        st.markdown("""
+        st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-val">{0}</div>
+            <div class="metric-val">{dur_display}</div>
             <div class="metric-lbl">Duration</div>
         </div>
-        """.format(f"{round((report.telemetry.duration_seconds if report.telemetry else 1800)/60.0, 1)} min"), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
         
     with col_hero3:
         st.markdown("""

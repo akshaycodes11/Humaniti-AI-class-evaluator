@@ -34,21 +34,31 @@ class ClassEvaluationState(TypedDict):
 
 
 def node_ingest_media(state: ClassEvaluationState) -> Dict[str, Any]:
-    """Node 1: Extract media metadata and representative keyframes using OpenCV."""
+    """Node 1: Extract media metadata and representative keyframes using OpenCV/FFmpeg."""
     media_path = state["media_path"]
     working_dir = state.get("working_dir", os.path.dirname(media_path))
     
     metadata = get_media_metadata(media_path)
     frames_dir = os.path.join(working_dir, "keyframes")
-    keyframes = extract_representative_keyframes(media_path, frames_dir, max_frames=8)
     
-    log = f"[IngestionNode] Processed media ({metadata.get('duration_seconds', 0)}s, {len(keyframes)} keyframes extracted)"
-    return {
+    updates = {
         "metadata": metadata,
-        "keyframes": keyframes,
         "current_step": "Ingestion Complete",
-        "execution_logs": state.get("execution_logs", []) + [log]
     }
+    
+    # If the provided media file is actually a WebVTT transcript
+    if metadata.get("is_transcript"):
+        if not state.get("vtt_path"):
+            updates["vtt_path"] = media_path
+        keyframes = []
+        log = f"[IngestionNode] Detected WebVTT transcript file ({round(metadata.get('duration_seconds', 0)/60.0, 1)} min duration parsed)."
+    else:
+        keyframes = extract_representative_keyframes(media_path, frames_dir, max_frames=8)
+        log = f"[IngestionNode] Processed media ({round(metadata.get('duration_seconds', 0)/60.0, 1)} min, {len(keyframes)} keyframes extracted)"
+        
+    updates["keyframes"] = keyframes
+    updates["execution_logs"] = state.get("execution_logs", []) + [log]
+    return updates
 
 
 def node_acoustic_telemetry(state: ClassEvaluationState) -> Dict[str, Any]:
@@ -57,21 +67,26 @@ def node_acoustic_telemetry(state: ClassEvaluationState) -> Dict[str, Any]:
     working_dir = state.get("working_dir", os.path.dirname(media_path))
     wav_path = os.path.join(working_dir, "audio.wav")
     
-    audio_extracted = extract_audio(media_path, wav_path)
+    meta_dur = state.get("metadata", {}).get("duration_seconds", 0.0)
+    fallback_dur = float(meta_dur) if meta_dur and float(meta_dur) > 0 else 1800.0
+
+    is_transcript = state.get("metadata", {}).get("is_transcript", False)
+    audio_extracted = False if is_transcript else extract_audio(media_path, wav_path)
     if audio_extracted:
         telemetry = analyze_audio_acoustics(wav_path)
+        if telemetry.get("duration_seconds", 0.0) <= 0.0:
+            telemetry["duration_seconds"] = fallback_dur
     else:
-        duration = state["metadata"].get("duration_seconds", 1800.0)
         telemetry = {
-            "duration_seconds": duration,
+            "duration_seconds": fallback_dur,
             "silence_ratio_pct": 28.5,
             "dead_air_incidents": 2,
             "longest_silence_seconds": 12.0,
-            "active_speech_seconds": duration * 0.71,
+            "active_speech_seconds": fallback_dur * 0.71,
             "dead_air_intervals": [(135.0, 147.0), (320.0, 335.0)]
         }
         
-    log = f"[AcousticNode] Silence Ratio: {telemetry.get('silence_ratio_pct')}% | Dead-Air Incidents: {telemetry.get('dead_air_incidents')}"
+    log = f"[AcousticNode] Duration: {round(telemetry.get('duration_seconds', 0)/60.0, 1)} min | Silence Ratio: {telemetry.get('silence_ratio_pct')}% | Dead-Air Incidents: {telemetry.get('dead_air_incidents')}"
     return {
         "audio_path": wav_path if audio_extracted else None,
         "acoustic_telemetry": telemetry,
@@ -83,7 +98,15 @@ def node_acoustic_telemetry(state: ClassEvaluationState) -> Dict[str, Any]:
 def node_visual_pacing(state: ClassEvaluationState) -> Dict[str, Any]:
     """Node 3: Compute OpenCV visual transition rate and slide dynamics."""
     media_path = state["media_path"]
-    visual_data = analyze_visual_pacing(media_path, sample_interval_sec=30.0)
+    has_video = state.get("metadata", {}).get("has_video", False)
+    if has_video:
+        visual_data = analyze_visual_pacing(media_path, sample_interval_sec=30.0)
+    else:
+        visual_data = {
+            "visual_change_rate": 1.2,
+            "total_slide_transitions_detected": 10,
+            "is_synthesized": True
+        }
     
     log = f"[VisionNode] Slide Transitions/Min: {visual_data.get('visual_change_rate')}"
     return {
@@ -203,6 +226,10 @@ def node_pedagogical_evaluator(state: ClassEvaluationState) -> Dict[str, Any]:
     for k in ["duration_seconds", "silence_ratio_pct", "dead_air_incidents", "longest_silence_seconds", "dead_air_intervals", "vocal_turns_count", "turn_taking_rate_per_min", "teacher_talk_ratio_pct", "student_talk_ratio_pct", "praise_count"]:
         if not combined_telemetry.get(k) and vtt_data.get(k) is not None:
             combined_telemetry[k] = vtt_data[k]
+
+    if combined_telemetry.get("duration_seconds", 0.0) <= 0.0:
+        meta_dur = state.get("metadata", {}).get("duration_seconds", 0.0)
+        combined_telemetry["duration_seconds"] = meta_dur if meta_dur > 0.0 else 1800.0
 
     combined_telemetry["visual_change_rate"] = state.get("visual_telemetry", {}).get("visual_change_rate", 1.0)
     combined_telemetry["total_slide_transitions_detected"] = state.get("visual_telemetry", {}).get("total_slide_transitions_detected", 5)

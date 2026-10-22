@@ -28,6 +28,42 @@ def extract_gdrive_file_id(url: str) -> Optional[str]:
 from pipeline.security import validate_safe_url, sanitize_filename, MAX_FILE_SIZE_BYTES
 
 
+def normalize_downloaded_file_extension(file_path: str) -> str:
+    """Inspect downloaded file header and correct the extension (e.g. rename .mp4 to .vtt if text transcript)."""
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        return file_path
+    
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(512)
+        
+        base, ext = os.path.splitext(file_path)
+        correct_path = file_path
+        
+        if b"WEBVTT" in header or (b"-->" in header and b"00:" in header):
+            if ext.lower() != ".vtt":
+                correct_path = f"{base}.vtt"
+        elif header.startswith(b"RIFF") and b"WAVE" in header[:16]:
+            if ext.lower() != ".wav":
+                correct_path = f"{base}.wav"
+        elif header.startswith(b"ID3") or (len(header) > 2 and header[0] == 0xFF and (header[1] & 0xE0) == 0xE0):
+            if ext.lower() != ".mp3":
+                correct_path = f"{base}.mp3"
+                
+        if correct_path != file_path:
+            if os.path.exists(correct_path):
+                try:
+                    os.remove(correct_path)
+                except Exception:
+                    pass
+            os.rename(file_path, correct_path)
+            return correct_path
+    except Exception:
+        pass
+        
+    return file_path
+
+
 def download_media_from_url(url: str, output_dir: str) -> Tuple[bool, str, str]:
     """
     Download media from either a Google Drive link or direct HTTP/HTTPS link.
@@ -51,16 +87,25 @@ def download_media_from_url(url: str, output_dir: str) -> Tuple[bool, str, str]:
     if "drive.google.com" in clean_url and file_id:
         try:
             import gdown
+            # Check if already cached as .vtt or .mp4
+            cached_vtt = os.path.join(output_dir, sanitize_filename(f"gdrive_{file_id}.vtt"))
+            if os.path.exists(cached_vtt) and os.path.getsize(cached_vtt) > 100:
+                return True, cached_vtt, "Loaded from cache"
+
+            cached_mp4 = os.path.join(output_dir, sanitize_filename(f"gdrive_{file_id}.mp4"))
+            if os.path.exists(cached_mp4) and os.path.getsize(cached_mp4) > 100:
+                normalized = normalize_downloaded_file_extension(cached_mp4)
+                return True, normalized, "Loaded from cache"
+
             safe_name = sanitize_filename(f"gdrive_{file_id}.mp4")
             out_path = os.path.join(output_dir, safe_name)
-            if os.path.exists(out_path) and os.path.getsize(out_path) > 1024:
-                return True, out_path, "Loaded from cache"
 
             # gdown download
             download_url = f"https://drive.google.com/uc?id={file_id}"
             output = gdown.download(download_url, out_path, quiet=False)
-            if output and os.path.exists(output) and os.path.getsize(output) > 1024:
-                return True, output, "Downloaded successfully from Google Drive"
+            if output and os.path.exists(output) and os.path.getsize(output) > 100:
+                final_path = normalize_downloaded_file_extension(output)
+                return True, final_path, "Downloaded successfully from Google Drive"
             else:
                 return False, "", "Could not download file from Google Drive. Ensure the file sharing is set to 'Anyone with the link'."
         except Exception as e:
@@ -97,7 +142,8 @@ def download_media_from_url(url: str, output_dir: str) -> Tuple[bool, str, str]:
                         f.write(chunk)
 
         if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            return True, out_path, "Downloaded successfully"
+            final_path = normalize_downloaded_file_extension(out_path)
+            return True, final_path, "Downloaded successfully"
         else:
             return False, "", "Downloaded file is empty"
     except Exception as e:
