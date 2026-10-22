@@ -20,45 +20,28 @@ To achieve high accuracy with near-zero cost ($0.00) and ultra-low latency (< 15
 
 ---
 
-## 🏗️ Architecture & Signal Pipeline
+## 🏗️ Architecture: LangGraph Multi-Agent StateGraph
 
+The evaluation pipeline is orchestrated using **LangGraph**, decomposing complex multimodal evaluation into discrete, state-managed nodes:
+
+```mermaid
+flowchart TD
+    START([START]) --> Ingest[Node 1: Ingestion & Keyframe Sampling]
+    Ingest --> Acoustics[Node 2: Acoustic Telemetry & Silence %]
+    Acoustics --> Vision[Node 3: OpenCV Visual Pacing]
+    Vision --> Transcript[Node 4: Dialogue & VTT Parsing]
+    Transcript --> Evaluator[Node 5: Pedagogical Reasoner Gemini / Fallback]
+    Evaluator --> Audit[Node 6: Quality Assurance & Schema Audit]
+    Audit --> END([END: Streamlit Dashboard + PDF Report])
 ```
-                       ┌──────────────────────────────┐
-                       │    User Input (File/Link)    │
-                       └──────────────┬───────────────┘
-                                      │
-               ┌──────────────────────┴──────────────────────┐
-               ▼                                             ▼
-     [OpenCV Video Pipeline]                       [Audio Extractor & VAD]
-  - Extract 1 frame / 45s                       - Energy & Silence % Detection
-  - Detect slide/scene changes                  - Pacing (Words/Min) & Dead Air
-               │                                             │
-               └──────────────────────┬──────────────────────┘
-                                      ▼
-                        ┌───────────────────────────┐
-                        │    Execution Path Router  │
-                        └─────────────┬─────────────┘
-                                      │
-            ┌─────────────────────────┴─────────────────────────┐
-            ▼                                                   ▼
- ┌──────────────────────┐                           ┌──────────────────────┐
- │ Mode A: Gemini Flash │ (Default Free Cloud)      │ Mode B: Local Engine │ (Offline Fallback)
- │ • Audio/Frames ->    │                           │ • Local Whisper/Regex│
- │   pedagogical rubric │                           │ • Acoustic Telemetry │
- │ • JSON schema output │                           │ • Heuristic Rubric   │
- └──────────┬───────────┘                           └──────────┬───────────┘
-            └─────────────────────────┬─────────────────────────┘
-                                      ▼
-                    ┌───────────────────────────────────┐
-                    │ Verified Pedagogical Evaluation   │
-                    │ (Poor / Average / Good / Excellent)│
-                    │ + Actionable Timestamped Evidence │
-                    └─────────────────┬─────────────────┘
-                                      ▼
-                    ┌───────────────────────────────────┐
-                    │   Streamlit Interactive Dashboard │
-                    └───────────────────────────────────┘
-```
+
+### LangGraph Node Pipeline:
+1. **`ingest_media`**: Probes container resolution, duration, and extracts representative keyframes evenly spaced across the class.
+2. **`acoustic_telemetry`**: Demuxes audio and runs RMS frame energy analysis to measure silence % and flag awkward dead-air pauses (> 7s).
+3. **`visual_pacing`**: Measures slide changes and visual state transitions per minute using OpenCV frame differencing.
+4. **`transcript_analysis`**: Scans conversation transcripts for student turn-taking ratio, questions asked, praise cues, and homework mentions.
+5. **`pedagogical_evaluator`**: Multi-modal reasoning engine (Gemini 1.5 Flash Free Tier or calibrated deterministic fallback) synthesizing telemetry into a verified `EvaluationReport`.
+6. **`audit_report`**: Validates scoring bounds, ensures evidence citation counts, and attaches confidence metrics.
 
 ---
 

@@ -15,6 +15,7 @@ from pipeline.telemetry import analyze_audio_acoustics, analyze_visual_pacing
 from pipeline.evaluator import evaluate_class_with_gemini, evaluate_class_local_fallback
 from pipeline.models import EvaluationReport
 from pipeline.vtt_parser import parse_vtt_file
+from pipeline.graph import build_evaluation_graph, ClassEvaluationState
 from utils.gdrive_downloader import download_media_from_url
 from utils.pdf_generator import generate_pdf_report
 
@@ -419,84 +420,56 @@ def render_report(report: EvaluationReport, keyframes):
 if eval_button:
     # Check if sample scenario or actual file
     if input_file_path and os.path.exists(input_file_path):
-        progress_bar = st.progress(0, text="Initializing media pipeline...")
+        progress_bar = st.progress(0, text="Initializing LangGraph multi-stage pipeline...")
         status_text = st.empty()
 
-        # Step 1: Metadata & Keyframe Extraction
-        status_text.text("Step 1/5: Analyzing media container and extracting keyframes...")
-        progress_bar.progress(20)
-        metadata = get_media_metadata(input_file_path)
-        
-        frames_dir = os.path.join(working_dir, "keyframes")
-        keyframes = extract_representative_keyframes(input_file_path, frames_dir, max_frames=8)
-
-        # Step 2: Transcript Analysis (if available or matching .vtt found)
-        status_text.text("Step 2/5: Parsing conversation transcripts for questions, praise, and HW...")
-        progress_bar.progress(40)
-        vtt_analysis = None
-        # Auto-match matching .vtt in same folder if not explicitly uploaded
-        base_no_ext = os.path.splitext(input_file_path)[0]
-        possible_vtts = [
-            input_vtt_path if input_vtt_path and os.path.exists(input_vtt_path) else None,
-            base_no_ext + ".vtt",
-            base_no_ext.replace("Part  - 2026-08-28", "").strip() + "-transcript-1.1.vtt",
-            os.path.join("dataset_samples", "class recordings", "average", "B435 Intermediate-transcript-1.1.vtt") if "B435" in input_file_path else None
-        ]
-        for p in possible_vtts:
-            if p and os.path.exists(p):
-                vtt_analysis = parse_vtt_file(p)
-                break
-
-        # Step 3: Audio extraction & Acoustic Telemetry
-        status_text.text("Step 3/5: Profiling speech energy, silence ratio, and dead-air intervals...")
-        progress_bar.progress(60)
-        wav_path = os.path.join(working_dir, "audio.wav")
-        audio_extracted = extract_audio(input_file_path, wav_path)
-        
-        if audio_extracted:
-            telemetry = analyze_audio_acoustics(wav_path)
-        else:
-            telemetry = {
-                "duration_seconds": metadata.get("duration_seconds", 1800.0),
-                "silence_ratio_pct": 28.5,
-                "dead_air_incidents": 2,
-                "longest_silence_seconds": 12.0,
-                "active_speech_seconds": metadata.get("duration_seconds", 1800.0) * 0.71,
-                "dead_air_intervals": [(135.0, 147.0), (320.0, 335.0)]
-            }
-
-        # Step 4: Visual pacing
-        status_text.text("Step 4/5: Quantifying screen dynamics and slide transitions...")
-        progress_bar.progress(80)
-        visual_telemetry = analyze_visual_pacing(input_file_path, sample_interval_sec=30.0)
-        telemetry["visual_change_rate"] = visual_telemetry.get("visual_change_rate", 1.0)
-        telemetry["total_slide_transitions_detected"] = visual_telemetry.get("total_slide_transitions_detected", 5)
-
-        # Step 5: Pedagogical AI Evaluation
-        status_text.text("Step 5/5: Performing pedagogical quality evaluation against 8x8 rubric...")
-        progress_bar.progress(90)
-        
         effective_key = api_key_input.strip() if api_key_input else os.environ.get("GEMINI_API_KEY", "")
-        if effective_key and not use_local_only:
-            try:
-                report = evaluate_class_with_gemini(
-                    api_key=effective_key,
-                    keyframe_paths=keyframes,
-                    telemetry=telemetry,
-                    media_metadata=metadata
-                )
-            except Exception as e:
-                st.warning(f"Gemini API request note: {e}. Using deterministic acoustic/visual engine.")
-                report = evaluate_class_local_fallback(telemetry, metadata, keyframes, vtt_analysis)
-        else:
-            report = evaluate_class_local_fallback(telemetry, metadata, keyframes, vtt_analysis)
+        
+        status_text.text("Compiling LangGraph StateGraph nodes...")
+        progress_bar.progress(15)
+        
+        eval_graph = build_evaluation_graph()
+        
+        initial_state: ClassEvaluationState = {
+            "media_path": input_file_path,
+            "vtt_path": input_vtt_path,
+            "api_key": effective_key,
+            "use_local_only": use_local_only,
+            "working_dir": working_dir,
+            "metadata": {},
+            "keyframes": [],
+            "audio_path": None,
+            "acoustic_telemetry": {},
+            "visual_telemetry": {},
+            "vtt_analysis": None,
+            "final_report": None,
+            "execution_logs": [],
+            "current_step": "Starting LangGraph Pipeline"
+        }
 
-        progress_bar.progress(100, text="Evaluation complete!")
+        status_text.text("Executing LangGraph nodes: Ingestion -> Acoustics -> Vision -> Transcript -> Pedagogical Reasoner...")
+        progress_bar.progress(50)
+        
+        final_state = eval_graph.invoke(initial_state)
+        
+        progress_bar.progress(100, text="LangGraph workflow completed!")
         time.sleep(0.5)
         status_text.empty()
         progress_bar.empty()
 
-        render_report(report, keyframes)
+        report = final_state.get("final_report")
+        keyframes = final_state.get("keyframes", [])
+        
+        # Display LangGraph Execution Trace
+        with st.expander("🤖 View LangGraph StateGraph Execution Trace", expanded=False):
+            st.caption("Step-by-step state transition logs across LangGraph nodes:")
+            for log in final_state.get("execution_logs", []):
+                st.code(log, language="bash")
+
+        if report:
+            render_report(report, keyframes)
+        else:
+            st.error("LangGraph failed to produce final report.")
 
     elif "sample_scenario" in st.session_state:
         scenario = st.session_state["sample_scenario"]
