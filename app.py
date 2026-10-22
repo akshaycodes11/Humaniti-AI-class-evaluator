@@ -244,7 +244,7 @@ st.markdown("### ⚙️ 2. Run Quality Assessment")
 
 col_eval1, col_eval2 = st.columns([2, 5])
 with col_eval1:
-    eval_button = st.button("🚀 Evaluate Class Recording", type="primary", use_container_width=True)
+    eval_button = st.button("🚀 Evaluate Class Recording", type="primary", width="stretch")
 with col_eval2:
     if input_file_path:
         st.info(f"Ready to evaluate: **{os.path.basename(input_file_path)}**")
@@ -337,7 +337,7 @@ def render_report(report: EvaluationReport, keyframes):
             ),
             tooltip=["Dimension", "Score", "Rubric Level"]
         ).properties(height=260)
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
 
     with col_dim_details:
         for _, row in df_dims.iterrows():
@@ -369,7 +369,7 @@ def render_report(report: EvaluationReport, keyframes):
             c = cols[idx % 4]
             with c:
                 if os.path.exists(img_path):
-                    st.image(img_path, caption=f"Timestamp: {ts}", use_container_width=True)
+                    st.image(img_path, caption=f"Timestamp: {ts}", width="stretch")
 
     # Strengths, Weaknesses, and Coaching Tips
     col_str, col_weak = st.columns(2)
@@ -397,7 +397,7 @@ def render_report(report: EvaluationReport, keyframes):
             data=json_data,
             file_name=f"class_evaluation_{report.overall_rating.lower()}.json",
             mime="application/json",
-            use_container_width=True
+            width="stretch"
         )
     with col_exp2:
         try:
@@ -410,7 +410,7 @@ def render_report(report: EvaluationReport, keyframes):
                 data=pdf_bytes,
                 file_name=f"class_evaluation_{report.overall_rating.lower()}.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                width="stretch"
             )
         except Exception as e:
             st.caption(f"PDF generator notice: {e}")
