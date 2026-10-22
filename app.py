@@ -445,8 +445,9 @@ def render_report(report: EvaluationReport, keyframes):
             st.markdown(f"- {w}")
 
     st.markdown("#### 📋 Actionable Teacher Coaching Recommendations")
-    for tip in report.actionable_coaching_tips:
-        st.markdown(f"1. **{tip}**")
+    for idx, tip in enumerate(report.actionable_coaching_tips, start=1):
+        st.markdown(f"**{idx}.** {tip}")
+
 
     # Export Report
     st.divider()
