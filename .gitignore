@@ -1,15 +1,37 @@
+# Python & Bytecode
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
-*.part
-dataset_samples/class recordings/**/*.mp4*
-*.mp4
-*.pdf
-keyframes/
-*.wav
-*.mp3
 .pytest_cache/
+
+# Environment & Secrets
+.env
 .streamlit/secrets.toml
 
+# Video & Audio Class Recordings (Never upload to GitHub)
+*.mp4
+*.m4v
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.flac
+*.wma
+
+# Class Recordings & Workspace Media Folders
+dataset_samples/class recordings/
+evaluator_workspace/
+temp_downloads/
+keyframes/
+*.part
+
+# Generated Evaluation PDFs
+*.pdf
